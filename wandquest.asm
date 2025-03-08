@@ -10,22 +10,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "ZEROPAGE"
 
-ActorsArray:    .res MAX_ACTORS * .sizeof(Actor)
 
-MenuItem:       .res 1       ; Keep track of the menu item that is selected
-
-Score:          .res 4       ; Score (1s, 10s, 100s, and 1000s digits in decimal)
-
-Collision:      .res 1       ; Flag if a collision happened or not
+OamPtr:         .res 2       ; Reserva 2 bytes para o ponteiro de OAM (Low Byte e High Byte)
 
 Buttons:        .res 1       ; Pressed buttons (A|B|Sel|Start|Up|Dwn|Lft|Rgt)
 PrevButtons:    .res 1       ; Stores the previous buttons from the last frame
 
-XPos:           .res 1       ; Player X position 
-YPos:           .res 1       ; Player Y position
-
-PrevSubmarine:  .res 1       ; Stores the seconds that the last submarine was added
-PrevAirplane:   .res 1       ; Stores the seconds that the last airplane was added
+XPos:               .res 1                ; Player X position
+YPos:               .res 1                ; Player Y position
 
 Frame:          .res 1       ; Counts frames (0 to 255 and repeats)
 IsDrawComplete: .res 1       ; Flag to indicate when VBlank is done drawing
@@ -36,30 +28,11 @@ SprPtr:         .res 2       ; Pointer to the sprite address - 16bits (lo,hi)
 BufPtr:         .res 2       ; Pointer to the buffer address - 16bits (lo,hi)
 PalPtr:         .res 2       ; Pointer to the palette address - 16bits (lo,hi)
 
-XScroll:        .res 1       ; Store the horizontal scroll position
-CurrNametable:  .res 1       ; Store the current starting nametable (0 or 1)
-Column:         .res 1       ; Stores the column (of tiles) we are in the level
-NewColAddr:     .res 2       ; The destination address of the new column in PPU
-SourceAddr:     .res 2       ; The source address in ROM of the new column tiles
-
-ParamType:      .res 1       ; Used as parameter to subroutine
-ParamXPos:      .res 1       ; Used as parameter to subroutine
-ParamYPos:      .res 1       ; Used as parameter to subroutine
-ParamTileNum:   .res 1       ; Used as parameter to subroutine
-ParamNumTiles:  .res 1       ; Used as parameter to subroutine
-ParamAttribs:   .res 1       ; Used as parameter to subroutine
-ParamRectX1:    .res 1       ; Used as parameter to subroutine
-ParamRectY1:    .res 1       ; Used as parameter to subroutine
-ParamRectX2:    .res 1       ; Used as parameter to subroutine
-ParamRectY2:    .res 1       ; Used as parameter to subroutine
-ParamScreen:    .res 1       ; Used as parameter to subroutine
-
 PrevOAMCount:   .res 1       ; Store the previous number of bytes that were sent to the OAM
 
 Seed:           .res 2       ; Initialize 16-bit seed to any value except 0
 
 GameState:      .res 1       ; Keep track of game state
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PRG-ROM code located at $8000
@@ -88,6 +61,7 @@ FAMISTUDIO_USE_RELEASE_NOTES  = 1
 FAMISTUDIO_DPCM_OFF           = $E000
 
 .include "audioengine.asm"
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Routine to read controller state and store it inside "Buttons" in RAM
@@ -131,46 +105,63 @@ FAMISTUDIO_DPCM_OFF           = $E000
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to load background data from the TitleScreen (using RLE)
+;; Subroutine to load all 32 color palette values from ROM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc LoadTitleScreenRLE
-    lda #>TitleScreenData    ; Hi-byte of memory address of (BgPtr)+1
-    sta BgPtr+1
-    lda #<TitleScreenData    ; Lo-byte of memory address of (BgPtr)+0
-    sta BgPtr+0
-    PPU_SETADDR $2000        ; Point PPU address to first nametable at $2000
-    ldy #0                   ; Y = 0 (Y counts how many bytes we are reading)
-  LengthLoop:
-    lda (BgPtr),y            ; Fetch new length
-    beq EndRoutine           ; Stop looping if we find Length == 0
-      iny                    ; Y++
-      bne :+
-        inc BgPtr+1          ; Increment hi-byte if Y rolls off back to 0
-      :
-      tax                    ; Transfer length to X
-      lda (BgPtr),y          ; Fetch new tile number
-      iny                    ; Y++
-      bne :+
-        inc BgPtr+1          ; Increment hi-byte if Y rolls off back to 0
-      :
-    TileLoop:
-      sta PPU_DATA           ; Send tile number to PPU
-      dex                    ; X--
-      bne TileLoop
-    
-    jmp LengthLoop         ; Proceed to read the next length
-  
-  EndRoutine:
-    rts
+.proc LoadPalette
+    PPU_SETADDR $3F00
+    ldy #0                   ; Y = 0
+  :   lda PaletteData,y        ; Lookup byte in ROM
+      sta PPU_DATA             ; Set value to send to PPU_DATA
+      iny                      ; Y++
+      cpy #32                  ; Is Y equal to 32?
+      bne :-                   ; Not yet, keep looping
+      rts                      ; Return from subroutine
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to switch CHR banks
-;; Params = A has the bank number
+;; Subroutine to load tiles and attributes into the first nametable
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc SwitchCHRBank
-    sta $8000                ; $8000 is the bank switch register of mapper 3
-    rts
+.proc LoadBackground
+    lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
+    sta BgPtr
+    lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
+    sta BgPtr+1
+
+    PPU_SETADDR $2000
+
+    ldx #$00                 ; X = 0 --> x is the outer loop index (hi-byte) from $0 to $4
+    ldy #$00                 ; Y = 0 --> y is the inner loop index (lo-byte) from $0 to $FF
+
+    OuterLoop:
+    InnerLoop:
+        lda (BgPtr),y            ; Fetch the value *pointed* by BgPtr + Y
+        sta PPU_DATA             ; Store in the PPU data
+        iny                      ; Y++
+        cpy #0                   ; If Y == 0 (wrapped around 256 times)?
+        beq IncreaseHiByte       ;   Then: we need to increase the hi-byte
+        jmp InnerLoop            ;   Else: Continue with the inner loop
+    IncreaseHiByte:
+    inc BgPtr+1              ; We increment the hi-byte pointer to point to the next background section (next 255-chunk)
+    inx                      ; X++
+    cpx #4                   ; Compare X with #4
+    bne OuterLoop            ;   If X is still not 4, then we keep looping back to the outer loop
+
+    rts                      ; Return from subroutine
+.endproc
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to load all 16 bytes into OAM-RAM starting at $0200
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc LoadSprites
+    ldx #0
+  LoopSprite:
+      lda SpriteData,x         ; We fetch bytes from the SpriteData lookup table
+      sta $0200,x              ; We store the bytes starting at OAM address $0200
+      inx                      ; X++
+      cpx #16
+      bne LoopSprite           ; Loop 16 times (4 hardware sprites, 4 bytes each)
+      rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -189,33 +180,33 @@ Reset:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc GamePlay
-    lda #0
-    jsr SwitchCHRBank        ; Switch CHR bank to use the main atlantico.chr one
 
     lda #State::PLAYING
     sta GameState            ; GameState = PLAYING
-    
-    PPU_DISABLE_NMI          ; Tell PPU to disable NMI and rendering so we can load the level
 
+    ldx #0
+    lda SpriteData,x
+    sta YPos
+    inx
+    inx
+    inx
+    lda SpriteData,x
+    sta XPos
+
+    jsr LoadPalette          ; Call LoadPalette subroutine to load 32 colors into our palette
+    jsr LoadBackground       ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
+    jsr LoadSprites          ; Call LoadSprites subroutine to load all sprites into OAM-RAM
+  
   InitVariables:
       lda #0
       sta Frame                ; Frame = 0
       sta Clock60              ; Clock60 = 0
-      sta XScroll              ; XScroll = 0
-      sta CurrNametable        ; CurrNametable = 0
-      sta Column               ; Column = 0
-      lda #113
-      sta XPos
-      lda #165
-      sta YPos
-
+      
       lda #$10
       sta Seed+1
       sta Seed+0               ; Initialize the Seed with any value different than zero
 
-    
-
-  
+  EnableRendering:
       lda #%10010000           ; Enable NMI and set background to use the 2nd pattern table (at $1000)
       sta PPU_CTRL
       lda #0
@@ -225,6 +216,34 @@ Reset:
       sta PPU_MASK             ; Set PPU_MASK bits to render the background
 
   GameLoop:
+
+    lda Buttons
+    sta PrevButtons          ; Stores the previously pressed buttons
+
+    jsr ReadControllers      ; Read joypad and load button state
+
+  CheckRightButton:
+    lda Buttons
+    and #BUTTON_RIGHT            ; Perform a bitwise AND with the accumulator
+    beq CheckLeftButton          ; If the right button is not pressed, we skip to test the left button
+        inc XPos                 ; X++, which is only performed if right button is being pressed
+  CheckLeftButton:
+      lda Buttons
+      and #BUTTON_LEFT             ; Perform a bitwise AND with the accumulator
+      beq CheckDownButton          ; If the left button is not pressed, we skip to test the down button
+          dec XPos                 ; X--, which is only performed if left button is being pressed
+  CheckDownButton:
+      lda Buttons
+      and #BUTTON_DOWN             ; Perform a bitwise AND with the accumulator
+      beq CheckUpButton           ; If the down button is not pressed, we skip to test the up button
+          inc YPos                ; Y++, which is only performed if down button is being pressed
+  CheckUpButton:
+      lda Buttons
+      and #BUTTON_UP              ; Perform a bitwise AND with the accumulator
+      beq :+                      ; If the up button is not pressed, we skip to the end of our button check
+          dec YPos                ; Y--, which is only performed if up button is being pressed
+  :
+
     WaitForVBlank:           ; We lock the execution of the game logic here
       lda IsDrawComplete     ; Here we check and only perform a game loop call once NMI is done drawing
       beq WaitForVBlank      ; Otherwise, we keep looping
@@ -247,10 +266,58 @@ OAMStartDMACopy:             ; DMA copy of OAM data from RAM to PPU
     lda #$02                 ; Every frame, we copy spite data starting at $02**
     sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
 
+OAMInteraction:
+  lda #< $00       ; Carrega o byte baixo do endereço $0000 (0x00)
+  sta OamPtr         ; Armazena o byte baixo de $0000 em OamPtr
+  lda #> $00       ; Carrega o byte alto do endereço $0000 (0x00)
+  sta OamPtr+1       ; Armazena o byte alto de $0000 em OamPtr+1
+  
+  ldx #63
+  nop 
+  nop 
+  nop 
+  nop 
+  nop 
+  LoopOAM:
+
+    lda #< OamPtr
+    sta $2003      ; Armazena o endereço baixo no OAMADDR (define o endereço para o primeiro sprite)
+
+    lda #> OamPtr
+    sta $2003      ; Armazena o endereço alto no OAMADDR (não é necessário alterar, já está em $00)
+
+
+    lda OamPtr        ; Carrega o byte baixo do OamPtr
+    clc               ; Limpa o carry antes da adição
+    adc #4            ; Adiciona 4 ao OamPtr
+    sta OamPtr        ; Armazena o resultado de volta no OamPtr
+
+    lda OamPtr+1      ; Carrega o byte alto do OamPtr
+    adc #0            ; Adiciona 0 ao byte alto (não precisamos incrementar, pois é apenas uma transferência de carry)
+    sta OamPtr+1      ; Armazena o byte alto atualizado no OamPtr
+    dex
+    bne LoopOAM
+
+UpdateSpritePosition:
+    lda XPos
+    sta $0203                ; Set the 1st sprite X position to be XPos
+    sta $020B                ; Set the 3rd sprite X position to be XPos
+    clc
+    adc #8
+    sta $0207                ; Set the 2nd sprite X position to be XPos + 8
+    sta $020F                ; Set the 4th sprite X position to be XPos + 8
+
+    lda YPos
+    sta $0200                ; Set the 1st sprite Y position to be YPos
+    sta $0204                ; Set the 2nd sprite Y position to be YPos
+    clc
+    adc #8
+    sta $0208                ; Set the 3rd sprite Y position to be YPos + 8
+    sta $020C                ; Set the 4th sprite Y position to be YPos + 8
 
 RefreshRendering:
     lda #%10010000           ; Enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
-    ora CurrNametable        ; OR with CurrNametable (0 or 1) to set PPU_CTRL bit-0 (starting nametable)
+    ora #0                   ; OR with CurrNametable (0 or 1) to set PPU_CTRL bit-0 (starting nametable)
     sta PPU_CTRL
     lda #%00011110           ; Enable sprites, enable background, no clipping on left side
     sta PPU_MASK
@@ -281,210 +348,54 @@ IRQ:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Hardcoded list of color values in ROM to be loaded by the PPU
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-PaletteDataCloudy:
-.byte $1C,$0F,$22,$1C, $1C,$37,$3D,$0F, $1C,$37,$3D,$30, $1C,$0F,$3D,$30 ; Background palette
-.byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32 ; Sprite palette
-PaletteDataClear:
-.byte $1C,$0F,$22,$1C, $1C,$36,$21,$0B, $1C,$36,$21,$30, $1C,$0F,$3D,$30 ; Background palette
-.byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32 ; Sprite palette
-PaletteDataNight:
-.byte $0C,$0F,$1C,$0C, $0C,$26,$0C,$0F, $0C,$26,$0C,$2D, $0C,$36,$07,$2D ; Background palette
-.byte $0C,$0F,$1D,$2D, $0C,$0F,$20,$27, $0C,$2D,$38,$18, $0C,$0F,$1A,$21 ; Sprite palette
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Background data (contains 4 screens that should scroll horizontally)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+PaletteData:
+.incbin "palettes_1.dat"
 BackgroundData:
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$23,$33,$15,$21,$12,$00,$31,$31,$31,$55,$56,$00,$00 ; ---> screen column 1 (from top to bottom)
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$24,$34,$15,$15,$12,$00,$31,$31,$53,$56,$56,$00,$00 ; ---> screen column 2 (from top to bottom)
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$14,$11,$3e,$15,$12,$00,$00,$00,$31,$52,$56,$00,$00 ; ---> screen column 3 (from top to bottom)
-.byte $13,$13,$7f,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$44,$21,$21,$21,$14,$11,$3f,$15,$12,$00,$00,$00,$31,$5a,$56,$00,$00 ; ...
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$45,$21,$21,$21,$22,$32,$15,$15,$12,$00,$00,$00,$31,$58,$56,$00,$00 ; ...
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$46,$21,$21,$21,$26,$36,$15,$15,$12,$00,$00,$00,$51,$5c,$56,$00,$00 ; ...
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$27,$37,$15,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$61,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$28,$38,$15,$15,$12,$00,$00,$00,$00,$5c,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$57,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$47,$21,$21,$21,$48,$21,$21,$22,$32,$3e,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$4a,$21,$21,$23,$33,$4e,$15,$12,$00,$00,$00,$00,$59,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$21,$21,$21,$24,$34,$3f,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$57,$56,$00,$00
-.byte $13,$13,$6c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$59,$56,$00,$00
-.byte $13,$13,$78,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$15,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$7b,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$15,$15,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$53,$56,$00,$00
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$15,$21,$21,$25,$35,$15,$15,$12,$00,$00,$00,$00,$54,$56,$00,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$26,$36,$15,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$27,$37,$15,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$48,$21,$21,$15,$27,$37,$15,$15,$12,$00,$00,$00,$00,$5d,$56,$00,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$28,$38,$3e,$21,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$22,$35,$3f,$21,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$26,$36,$3f,$21,$12,$00,$00,$00,$00,$57,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$4a,$21,$21,$21,$27,$37,$21,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$76,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$21,$21,$21,$28,$38,$15,$15,$12,$00,$00,$00,$00,$58,$56,$00,$00
-.byte $13,$13,$72,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$14,$11,$3e,$21,$12,$00,$00,$00,$00,$59,$56,$00,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$21,$21,$21,$14,$11,$4e,$21,$12,$00,$00,$00,$51,$59,$56,$00,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$14,$11,$3f,$15,$12,$00,$00,$00,$00,$5c,$56,$00,$00
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$29,$39,$21,$21,$12,$00,$00,$00,$00,$55,$56,$00,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$21,$48,$21,$2c,$2a,$3a,$3c,$21,$12,$00,$00,$00,$54,$56,$56,$00,$00
-.byte $13,$13,$65,$13,$20,$21,$21,$21,$21,$21,$21,$21,$46,$21,$21,$21,$4a,$21,$2d,$2a,$3a,$3d,$15,$12,$00,$00,$00,$00,$52,$56,$00,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$2b,$3b,$15,$15,$12,$00,$00,$00,$00,$57,$56,$00,$00
+.incbin "wq_nametable_0.nam"
+;.include "nametable0.asm"
 
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$21,$12,$00,$31,$31,$31,$55,$56,$ff,$9a
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$15,$21,$14,$11,$15,$15,$12,$00,$31,$31,$53,$56,$56,$ff,$5a
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$15,$15,$21,$14,$11,$3e,$15,$12,$00,$00,$00,$31,$52,$56,$ff,$5a
-.byte $13,$13,$7f,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$15,$15,$15,$21,$14,$11,$3f,$15,$12,$00,$00,$00,$31,$5a,$56,$ff,$56
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$15,$15,$15,$21,$14,$11,$15,$15,$12,$00,$00,$00,$31,$58,$56,$ff,$59
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$15,$15,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$51,$5c,$56,$ff,$5a
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$15,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$ff,$5a
-.byte $13,$13,$61,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$5c,$56,$ff,$5a
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$57,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$47,$21,$21,$21,$48,$21,$21,$14,$11,$3e,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$4a,$21,$21,$14,$11,$4e,$15,$12,$00,$00,$00,$00,$59,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$21,$21,$21,$25,$35,$3f,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$26,$36,$15,$15,$12,$00,$00,$00,$00,$57,$56,$aa,$00
-.byte $13,$13,$6c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$21,$21,$21,$21,$27,$37,$15,$15,$12,$00,$00,$00,$00,$59,$56,$aa,$00
-.byte $13,$13,$78,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$15,$21,$21,$21,$28,$38,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$7b,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$15,$15,$21,$21,$29,$39,$15,$15,$12,$00,$00,$00,$00,$53,$56,$aa,$00
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$15,$21,$1f,$2a,$3a,$3c,$15,$12,$00,$00,$00,$00,$54,$56,$aa,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$28,$3b,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$48,$21,$21,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$5d,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$14,$11,$3e,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$14,$11,$3f,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$14,$11,$3f,$21,$12,$00,$00,$00,$00,$57,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$4a,$21,$21,$21,$14,$11,$21,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$76,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$5a,$00
-.byte $13,$13,$72,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$14,$11,$3e,$21,$12,$00,$00,$00,$00,$59,$56,$9a,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$21,$21,$21,$22,$32,$4e,$21,$12,$00,$00,$00,$51,$59,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$23,$33,$3f,$15,$12,$00,$00,$00,$00,$5c,$56,$6a,$00
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$24,$34,$21,$21,$12,$00,$00,$00,$00,$55,$56,$9a,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$21,$48,$15,$15,$14,$11,$15,$21,$12,$00,$00,$00,$54,$56,$56,$aa,$00
-.byte $13,$13,$65,$13,$20,$21,$21,$21,$21,$21,$21,$21,$46,$21,$21,$21,$4a,$21,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$52,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$57,$56,$aa,$00
+; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; ;; Here goes the encoded music data that was exported by FamiStudio
+; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; MusicData:
+; .include "music/titan.asm"
+; .include "music/maritime.asm"
 
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$21,$12,$00,$31,$31,$31,$58,$56,$ff,$9a
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$14,$11,$15,$15,$12,$00,$31,$31,$00,$5d,$56,$ff,$5a
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$14,$11,$3e,$15,$12,$00,$00,$00,$31,$58,$56,$ff,$5a
-.byte $13,$13,$7f,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$44,$21,$21,$21,$14,$11,$3f,$15,$12,$00,$00,$00,$31,$58,$56,$ff,$aa
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$45,$21,$21,$21,$22,$32,$15,$15,$12,$00,$00,$00,$31,$58,$56,$ff,$56
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$46,$21,$21,$21,$26,$36,$15,$15,$12,$00,$00,$00,$51,$58,$56,$ff,$9a
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$27,$37,$15,$15,$12,$00,$00,$00,$00,$58,$56,$ff,$59
-.byte $13,$13,$61,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$28,$38,$15,$15,$12,$00,$00,$00,$00,$55,$56,$ff,$5a
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$57,$56,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$47,$21,$21,$21,$48,$21,$21,$22,$32,$3e,$15,$12,$00,$00,$00,$00,$52,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$4a,$21,$21,$23,$33,$4e,$15,$12,$00,$00,$00,$00,$53,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$21,$21,$21,$24,$34,$3f,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$6c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$78,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$7b,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$59,$56,$aa,$00
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$29,$39,$15,$15,$12,$00,$00,$00,$00,$59,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$1f,$2a,$3a,$3d,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$48,$21,$15,$2d,$2a,$3a,$3c,$15,$12,$00,$00,$00,$00,$5b,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$2f,$2a,$3a,$3d,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$28,$3b,$3e,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$49,$21,$21,$21,$14,$11,$4e,$21,$12,$00,$00,$00,$51,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$4a,$21,$21,$21,$14,$11,$21,$15,$12,$00,$00,$00,$51,$58,$56,$aa,$00
-.byte $13,$13,$76,$13,$20,$21,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$21,$21,$15,$29,$39,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$72,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$15,$2c,$2a,$3a,$3e,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$21,$21,$2e,$2a,$3a,$4e,$21,$12,$00,$00,$00,$51,$58,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$1f,$2a,$3a,$3f,$15,$12,$00,$00,$00,$00,$5d,$56,$aa,$00
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$15,$28,$3b,$3f,$21,$12,$00,$00,$00,$00,$57,$56,$aa,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$45,$21,$21,$21,$48,$21,$15,$14,$11,$15,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$65,$13,$20,$21,$21,$21,$21,$21,$21,$21,$46,$21,$21,$21,$4a,$21,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
+; SoundFXData:
+; .include "sfx/sounds.asm"
 
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$21,$12,$00,$31,$31,$31,$58,$56,$ff,$9a
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$14,$11,$15,$15,$12,$00,$31,$31,$00,$58,$56,$ff,$5a
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$31,$58,$56,$ff,$5a
-.byte $13,$13,$7f,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$15,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$31,$54,$56,$ff,$59
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$15,$21,$21,$21,$14,$11,$3e,$15,$12,$00,$00,$00,$31,$54,$56,$ff,$56
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$42,$15,$21,$21,$15,$21,$21,$21,$14,$11,$4e,$15,$12,$00,$00,$00,$51,$58,$56,$ff,$5a
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$21,$21,$21,$21,$14,$11,$4e,$15,$12,$00,$00,$00,$00,$58,$56,$ff,$59
-.byte $13,$13,$61,$13,$20,$21,$21,$21,$21,$21,$21,$44,$21,$21,$21,$21,$21,$21,$21,$14,$11,$3f,$15,$12,$00,$00,$00,$00,$58,$56,$ff,$5a
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$45,$21,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$47,$15,$21,$21,$21,$15,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$53,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$15,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$21,$21,$21,$14,$11,$15,$15,$12,$00,$00,$00,$00,$57,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$21,$21,$21,$29,$39,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$6c,$13,$20,$21,$21,$21,$21,$21,$48,$21,$15,$21,$21,$21,$21,$1d,$1e,$2a,$3a,$3c,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$78,$13,$20,$21,$21,$21,$21,$21,$49,$21,$21,$21,$21,$21,$21,$21,$21,$2b,$3b,$3e,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$7b,$13,$20,$21,$21,$21,$21,$21,$4a,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$4e,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$6e,$13,$20,$21,$21,$21,$21,$15,$48,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$4e,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$49,$21,$21,$21,$21,$21,$21,$21,$21,$14,$11,$3f,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$4a,$21,$21,$21,$21,$21,$21,$15,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$59,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$15,$21,$15,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$59,$56,$aa,$00
-.byte $13,$13,$60,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$15,$21,$21,$15,$14,$11,$15,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$42,$21,$21,$21,$15,$21,$21,$21,$29,$39,$15,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$43,$21,$21,$21,$15,$21,$21,$2c,$2a,$3a,$3c,$21,$12,$00,$00,$00,$50,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$44,$15,$21,$21,$15,$21,$21,$2d,$2a,$3a,$3e,$15,$12,$00,$00,$00,$50,$58,$56,$aa,$00
-.byte $13,$13,$76,$13,$20,$21,$21,$21,$21,$21,$21,$45,$15,$21,$21,$21,$21,$21,$15,$2b,$3b,$3f,$15,$12,$00,$00,$00,$00,$54,$56,$aa,$00
-.byte $13,$13,$72,$13,$20,$21,$21,$21,$21,$21,$21,$46,$15,$21,$21,$21,$21,$15,$15,$14,$11,$3f,$21,$12,$00,$00,$00,$00,$59,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$21,$21,$15,$14,$11,$15,$21,$12,$00,$00,$00,$51,$58,$56,$aa,$00
-.byte $13,$13,$7c,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$21,$21,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$75,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$21,$21,$15,$14,$11,$15,$21,$12,$00,$00,$00,$00,$5d,$56,$aa,$00
-.byte $13,$13,$84,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$15,$21,$15,$14,$11,$15,$21,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$65,$13,$20,$21,$21,$21,$21,$21,$21,$21,$15,$21,$21,$21,$15,$15,$15,$14,$11,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-.byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$22,$32,$15,$15,$12,$00,$00,$00,$00,$58,$56,$aa,$00
-
-AttributeData:
-.byte $ff,$aa,$aa,$aa,$9a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$6a,$a6,$00,$00,$00
-.byte $ff,$aa,$aa,$9a,$59,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$9a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-
-.byte $ff,$aa,$aa,$5a,$9a,$00,$00,$00
-.byte $ff,$aa,$aa,$9a,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$6a,$56,$00,$00,$00
-.byte $ff,$aa,$aa,$9a,$59,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-
-.byte $ff,$aa,$aa,$aa,$9a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$aa,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$56,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$9a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$59,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-
-.byte $ff,$aa,$aa,$aa,$9a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$59,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$56,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$59,$00,$00,$00
-.byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-
-TitleScreenData:
-.incbin "titlescreen.rle"
+; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; ;; Here we add the CHR-ROM data, included from an external .CHR file
+; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Here goes the encoded music data that was exported by FamiStudio
+;; This is the OAM sprite attribute data data we will use in our game.
+;; We have only one big metasprite that is composed of 4 hardware sprites.
+;; The OAM is organized in sets of 4 bytes per tile.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-MusicData:
-.include "music/titan.asm"
-.include "music/maritime.asm"
+SpriteData:
+;--------------------------------
+; Mage:
+;      Y   tile#  attributes   X
+.byte $AE,  $00,  %00000011,  $98
+.byte $AE,  $00,  %01000011,  $A0
+.byte $B6,  $01,  %00000011,  $98
+.byte $B6,  $01,  %01000011,  $A0
 
-SoundFXData:
-.include "sfx/sounds.asm"
+; Sprite Attribute Byte:
+;-----------------------
+; 76543210
+; |||   ||
+; |||   ++- Color Palette of sprite. Choose which set of 4 from the 16 colors to use
+; |||
+; ||+------ Priority (0: in front of background; 1: behind background)
+; |+------- Flip sprite horizontally
+; +-------- Flip sprite vertically
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Here we add the CHR-ROM data, included from an external .CHR file
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "CHARS1"
-.incbin "atlantico.chr"      ; This is the 1st bank of CHR-ROM tiles
+.incbin "wand_quest_spr.chr" 
+.incbin "wand_quest_bg.chr"    ; This is the 1nd bank of CHR-ROM tiles
 
-.segment "CHARS2"
-.incbin "titlescreen.chr"    ; This is the 2nd bank of CHR-ROM tiles
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Vectors with the addresses of the handlers that we always add at $FFFA

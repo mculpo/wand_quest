@@ -11,6 +11,11 @@ PPU_ADDR    = $2006
 PPU_DATA    = $2007
 PPU_OAM_DMA = $4014
 
+
+OAM_BUFFER = $0200      ; Endereço do OAM no NES
+OAM_SIZE   = 256        ; OAM tem 256 bytes (64 sprites x 4 bytes)
+OAM_OFFSET = $00        ; Variável para armazenar o deslocamento do buffer
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; APU ports
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
