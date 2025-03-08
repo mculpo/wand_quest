@@ -49,3 +49,14 @@
     tax
     pla                      ; Pull A from the stack
 .endmacro
+
+
+.macro PUSH_REG_X
+    txa     ; Transfere X para A
+    pha     ; Salva X (agora em A) na pilha
+.endmacro
+
+.macro PULL_REG_X
+    pla     ; Recupera X (salvo como A) da pilha
+    tax     ; Transfere de volta para X
+.endmacro

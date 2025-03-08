@@ -10,14 +10,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "ZEROPAGE"
 
+currentAnim:        .res 1                ;
+TempAnim:           .res 1
 
-OamPtr:         .res 2       ; Reserva 2 bytes para o ponteiro de OAM (Low Byte e High Byte)
 
 Buttons:        .res 1       ; Pressed buttons (A|B|Sel|Start|Up|Dwn|Lft|Rgt)
 PrevButtons:    .res 1       ; Stores the previous buttons from the last frame
 
 XPos:               .res 1                ; Player X position
 YPos:               .res 1                ; Player Y position
+ParamY:             .res 1
 
 Frame:          .res 1       ; Counts frames (0 to 255 and repeats)
 IsDrawComplete: .res 1       ; Flag to indicate when VBlank is done drawing
@@ -154,14 +156,70 @@ FAMISTUDIO_DPCM_OFF           = $E000
 ;; Subroutine to load all 16 bytes into OAM-RAM starting at $0200
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc LoadSprites
-    ldx #0
-  LoopSprite:
-      lda SpriteData,x         ; We fetch bytes from the SpriteData lookup table
-      sta $0200,x              ; We store the bytes starting at OAM address $0200
-      inx                      ; X++
-      cpx #16
-      bne LoopSprite           ; Loop 16 times (4 hardware sprites, 4 bytes each)
-      rts
+    ;; Apenas para teste.
+    lda currentAnim
+    beq init_sprite      ; Se currentAnim == 0, começa do primeiro MetaSprite
+
+    lda #16              ; Se currentAnim == 1, começa do segundo MetaSprite (pula 16 bytes)
+    jmp StartLoop
+
+init_sprite:
+    lda #0               ; Define o índice inicial como 0
+
+StartLoop:
+    tay
+    ldx #0               ; Reseta X para armazenar na OAM
+
+LoopSprite:
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;; Atualiza o Y  attributes
+    ;; Apenas incremento para pular a inserção do valor Y
+    ;; 
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    inx
+    iny
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;; Atualiza o Tiletile#  attributes
+    ;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    lda SpriteData, y    
+    sta $0200, x         ; Tile do sprite
+    inx
+    iny
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;; Atualiza o attributes
+    ;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    lda SpriteData, y    
+    sta $0200, x         ; Atributos do sprite
+    inx
+    iny
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;; Atualiza o X  attributes
+    ;; Apenas incremento para pular a inserção do valor X
+    ;; 
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    inx                 
+    iny                  
+
+    cpx #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
+    bne LoopSprite       ; Se não, continua carregando
+
+    rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -194,13 +252,15 @@ Reset:
     sta XPos
 
     jsr LoadPalette          ; Call LoadPalette subroutine to load 32 colors into our palette
-    jsr LoadBackground       ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
+    ;;jsr LoadBackground       ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
     jsr LoadSprites          ; Call LoadSprites subroutine to load all sprites into OAM-RAM
   
   InitVariables:
       lda #0
       sta Frame                ; Frame = 0
       sta Clock60              ; Clock60 = 0
+      sta TempAnim
+      sta currentAnim
       
       lda #$10
       sta Seed+1
@@ -261,43 +321,12 @@ NMI:
     PUSH_REGS                ; Macro to save register values by pushing them to the stack
 
     inc Frame                ; Frame++
+    inc TempAnim             ; Frame++
 
 OAMStartDMACopy:             ; DMA copy of OAM data from RAM to PPU
     lda #$02                 ; Every frame, we copy spite data starting at $02**
     sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
-
-OAMInteraction:
-  lda #< $00       ; Carrega o byte baixo do endereço $0000 (0x00)
-  sta OamPtr         ; Armazena o byte baixo de $0000 em OamPtr
-  lda #> $00       ; Carrega o byte alto do endereço $0000 (0x00)
-  sta OamPtr+1       ; Armazena o byte alto de $0000 em OamPtr+1
-  
-  ldx #63
-  nop 
-  nop 
-  nop 
-  nop 
-  nop 
-  LoopOAM:
-
-    lda #< OamPtr
-    sta $2003      ; Armazena o endereço baixo no OAMADDR (define o endereço para o primeiro sprite)
-
-    lda #> OamPtr
-    sta $2003      ; Armazena o endereço alto no OAMADDR (não é necessário alterar, já está em $00)
-
-
-    lda OamPtr        ; Carrega o byte baixo do OamPtr
-    clc               ; Limpa o carry antes da adição
-    adc #4            ; Adiciona 4 ao OamPtr
-    sta OamPtr        ; Armazena o resultado de volta no OamPtr
-
-    lda OamPtr+1      ; Carrega o byte alto do OamPtr
-    adc #0            ; Adiciona 0 ao byte alto (não precisamos incrementar, pois é apenas uma transferência de carry)
-    sta OamPtr+1      ; Armazena o byte alto atualizado no OamPtr
-    dex
-    bne LoopOAM
-
+    
 UpdateSpritePosition:
     lda XPos
     sta $0203                ; Set the 1st sprite X position to be XPos
@@ -331,6 +360,23 @@ SetGameClock:
     sta Frame
 :
 
+setAnimationClock:
+    lda TempAnim
+    cmp #10
+    bne :+                  ; Se TempAnim < 30, pula a atualização
+
+        inc currentAnim         ; Incrementa currentAnim
+        lda #0
+        sta TempAnim            ; Reseta TempAnim
+     
+        lda currentAnim
+        cmp #2                  ; Se currentAnim > 1 (ou seja, 2 ou mais)
+        bcc :+                  ; Se for menor que 2, mantém
+            lda #0
+            sta currentAnim         ; Reseta para 0 se passar de 1 
+              
+:
+jsr LoadSprites         ; Atualiza os sprites depois de mudar a animação     
 SetDrawComplete:
     lda #1
     sta IsDrawComplete       ; Set the DrawComplete flag to indicate we are done drawing to the PPU
@@ -375,12 +421,19 @@ BackgroundData:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 SpriteData:
 ;--------------------------------
-; Mage:
+; Mage: Sprite 1
 ;      Y   tile#  attributes   X
 .byte $AE,  $00,  %00000011,  $98
 .byte $AE,  $00,  %01000011,  $A0
 .byte $B6,  $01,  %00000011,  $98
 .byte $B6,  $01,  %01000011,  $A0
+;--------------------------------
+; Mage: Sprite 2
+;      Y   tile#  attributes   X
+.byte $AE,  $03,  %00000011,  $98
+.byte $AE,  $03,  %01000011,  $A0
+.byte $B6,  $02,  %00000011,  $98
+.byte $B6,  $02,  %01000011,  $A0
 
 ; Sprite Attribute Byte:
 ;-----------------------
