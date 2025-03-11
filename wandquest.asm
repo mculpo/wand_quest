@@ -148,10 +148,32 @@ FAMISTUDIO_DPCM_OFF           = $E000
 .endproc
 
 
+.proc LoadBlock
+    lda #$02
+    sta SprPtr+1
+    lda #$00
+    sta SprPtr                         ; Point SprPtr to $0200
+
+    ldx #0
+    ldy #16
+LoopSprite:
+    lda SpriteBlockData, x       ; We fetch bytes from the  lookup table
+    sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
+    iny
+    inx                          ; X++
+    cpx #32
+    bne LoopSprite               ; Loop 16 times (4 hardware sprites, 4 bytes each)
+    rts
+.endproc
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subroutine to load all 16 bytes into OAM-RAM starting at $0200
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc LoadSprites
+    lda #$02
+    sta SprPtr+1
+    lda #$00
+    sta SprPtr                         ; Point SprPtr to $0200
+
     ;; Apenas para teste.
     lda first_player+Player::c_anim
     beq init_sprite      ; Se currentAnim == 0, começa do primeiro MetaSprite
@@ -163,8 +185,8 @@ FAMISTUDIO_DPCM_OFF           = $E000
         lda #0               ; Define o índice inicial como 0
 
     StartLoop:
-        tay
-        ldx #0               ; Reseta X para armazenar na OAM
+        tax
+        ldy #0               ; Reseta y para armazenar na OAM
 
     LoopSprite:
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -184,8 +206,8 @@ FAMISTUDIO_DPCM_OFF           = $E000
         ;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        lda SpriteData, y    
-        sta $0200, x         ; Tile do sprite
+        lda SpriteData, x    
+        sta (SprPtr), y         ; Tile do sprite
         inx
         iny
 
@@ -196,8 +218,8 @@ FAMISTUDIO_DPCM_OFF           = $E000
         ;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        lda SpriteData, y    
-        sta $0200, x         ; Atributos do sprite
+        lda SpriteData, x    
+        sta (SprPtr), y         ; Atributos do sprite
         inx
         iny
 
@@ -212,7 +234,7 @@ FAMISTUDIO_DPCM_OFF           = $E000
         inx                 
         iny                  
 
-        cpx #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
+        cpy #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
         bne LoopSprite       ; Se não, continua carregando
 
         rts
@@ -251,8 +273,9 @@ Reset:
 
     jsr LoadPalette          ; Call LoadPalette subroutine to load 32 colors into our palette
     ;;jsr LoadBackground       ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
+    jsr LoadBlock
     jsr LoadSprites          ; Call LoadSprites subroutine to load all sprites into OAM-RAM
-  
+
   InitVariables:
       lda #0
       sta Frame                ; Frame = 0
@@ -324,6 +347,8 @@ OAMStartDMACopy:             ; DMA copy of OAM data from RAM to PPU
     sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
     
 UpdateSpritePosition:
+
+    ;;; Atualizando o player diretamente na memoria.
     lda first_player+Player::x_pos
     sta $0203                ; Set the 1st sprite X position to be XPos
     sta $020B                ; Set the 3rd sprite X position to be XPos
@@ -339,6 +364,10 @@ UpdateSpritePosition:
     adc #8
     sta $0208                ; Set the 3rd sprite Y position to be YPos + 8
     sta $020C                ; Set the 4th sprite Y position to be YPos + 8
+
+    ;;;; ABAIXO AQUI COLOCAR A ATUALIZAÇÃO DAS OUTRAS SPRITES JÁ CARREGADAS
+    ;;;; OS PRIMEIROS PONTEIROS SÃO PARA O PLAYER 1 E PLAYER 2 ( AQUI TMB PRETENDO COLOCAR ARRAY PARA NÃO PRECISAR, SETAR DIRETAMENTE)
+    ;;;; OS DEMAIS SÃO PARA BLOCOS E INIMIGOS, QUE VÃO SER ARRAYS.
 
 RefreshRendering:
     lda #%10010000           ; Enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
@@ -440,6 +469,18 @@ SpriteData:
 ; ||+------ Priority (0: in front of background; 1: behind background)
 ; |+------- Flip sprite horizontally
 ; +-------- Flip sprite vertically
+
+SpriteBlockData:
+.byte $64,  $04,  %00000010,  $64  ; Sprite 1 -> X=100, Y=100
+.byte $64,  $04,  %01000010,  $6C  ; Sprite 2 -> X=108, Y=100
+.byte $6C,  $04,  %10000010,  $64  ; Sprite 3 -> X=100, Y=108
+.byte $6C,  $04,  %11000010,  $6C  ; Sprite 4 -> X=108, Y=108
+
+.byte $18,  $04,  %00000010,  $18  ; Sprite 1 -> X=24, Y=24
+.byte $18,  $04,  %01000010,  $20  ; Sprite 3 -> X=24, Y=32
+.byte $20,  $04,  %10000010,  $18  ; Sprite 2 -> X=32, Y=24
+.byte $20,  $04,  %11000010,  $20  ; Sprite 4 -> X=32, Y=32
+
 
 .segment "CHARS1"
 .incbin "wand_quest_spr.chr" 
