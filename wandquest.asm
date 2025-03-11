@@ -10,15 +10,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "ZEROPAGE"
 
-currentAnim:        .res 1                ;
-TempAnim:           .res 1
+first_player:       .res .sizeof(Player) 
 
+Buttons:            .res 1       ; Pressed buttons (A|B|Sel|Start|Up|Dwn|Lft|Rgt)
+PrevButtons:        .res 1       ; Stores the previous buttons from the last frame
 
-Buttons:        .res 1       ; Pressed buttons (A|B|Sel|Start|Up|Dwn|Lft|Rgt)
-PrevButtons:    .res 1       ; Stores the previous buttons from the last frame
-
-XPos:               .res 1                ; Player X position
-YPos:               .res 1                ; Player Y position
 ParamY:             .res 1
 
 Frame:          .res 1       ; Counts frames (0 to 255 and repeats)
@@ -157,69 +153,69 @@ FAMISTUDIO_DPCM_OFF           = $E000
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc LoadSprites
     ;; Apenas para teste.
-    lda currentAnim
+    lda first_player+Player::c_anim
     beq init_sprite      ; Se currentAnim == 0, começa do primeiro MetaSprite
 
     lda #16              ; Se currentAnim == 1, começa do segundo MetaSprite (pula 16 bytes)
     jmp StartLoop
 
-init_sprite:
-    lda #0               ; Define o índice inicial como 0
+    init_sprite:
+        lda #0               ; Define o índice inicial como 0
 
-StartLoop:
-    tay
-    ldx #0               ; Reseta X para armazenar na OAM
+    StartLoop:
+        tay
+        ldx #0               ; Reseta X para armazenar na OAM
 
-LoopSprite:
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;
-    ;; Atualiza o Y  attributes
-    ;; Apenas incremento para pular a inserção do valor Y
-    ;; 
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    inx
-    iny
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;
-    ;; Atualiza o Tiletile#  attributes
-    ;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    lda SpriteData, y    
-    sta $0200, x         ; Tile do sprite
-    inx
-    iny
+    LoopSprite:
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o Y  attributes
+        ;; Apenas incremento para pular a inserção do valor Y
+        ;; 
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        inx
+        iny
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o Tiletile#  attributes
+        ;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        lda SpriteData, y    
+        sta $0200, x         ; Tile do sprite
+        inx
+        iny
 
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;
-    ;; Atualiza o attributes
-    ;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    lda SpriteData, y    
-    sta $0200, x         ; Atributos do sprite
-    inx
-    iny
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o attributes
+        ;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        lda SpriteData, y    
+        sta $0200, x         ; Atributos do sprite
+        inx
+        iny
 
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;
-    ;; Atualiza o X  attributes
-    ;; Apenas incremento para pular a inserção do valor X
-    ;; 
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    inx                 
-    iny                  
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o X  attributes
+        ;; Apenas incremento para pular a inserção do valor X
+        ;; 
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        inx                 
+        iny                  
 
-    cpx #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
-    bne LoopSprite       ; Se não, continua carregando
+        cpx #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
+        bne LoopSprite       ; Se não, continua carregando
 
-    rts
+        rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -243,13 +239,15 @@ Reset:
     sta GameState            ; GameState = PLAYING
 
     ldx #0
+    ldx first_player+Player::t_anim
+    ldx first_player+Player::c_anim
     lda SpriteData,x
-    sta YPos
+    sta first_player+Player::y_pos
     inx
     inx
     inx
     lda SpriteData,x
-    sta XPos
+    sta first_player+Player::x_pos
 
     jsr LoadPalette          ; Call LoadPalette subroutine to load 32 colors into our palette
     ;;jsr LoadBackground       ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
@@ -259,9 +257,7 @@ Reset:
       lda #0
       sta Frame                ; Frame = 0
       sta Clock60              ; Clock60 = 0
-      sta TempAnim
-      sta currentAnim
-      
+
       lda #$10
       sta Seed+1
       sta Seed+0               ; Initialize the Seed with any value different than zero
@@ -284,24 +280,24 @@ Reset:
 
   CheckRightButton:
     lda Buttons
-    and #BUTTON_RIGHT            ; Perform a bitwise AND with the accumulator
-    beq CheckLeftButton          ; If the right button is not pressed, we skip to test the left button
-        inc XPos                 ; X++, which is only performed if right button is being pressed
+    and #BUTTON_RIGHT                                   ; Perform a bitwise AND with the accumulator
+    beq CheckLeftButton                                 ; If the right button is not pressed, we skip to test the left button
+        inc first_player+Player::x_pos                  ; X++, which is only performed if right button is being pressed
   CheckLeftButton:
       lda Buttons
-      and #BUTTON_LEFT             ; Perform a bitwise AND with the accumulator
-      beq CheckDownButton          ; If the left button is not pressed, we skip to test the down button
-          dec XPos                 ; X--, which is only performed if left button is being pressed
+      and #BUTTON_LEFT                                  ; Perform a bitwise AND with the accumulator
+      beq CheckDownButton                               ; If the left button is not pressed, we skip to test the down button
+          dec first_player+Player::x_pos                ; X--, which is only performed if left button is being pressed
   CheckDownButton:
       lda Buttons
-      and #BUTTON_DOWN             ; Perform a bitwise AND with the accumulator
-      beq CheckUpButton           ; If the down button is not pressed, we skip to test the up button
-          inc YPos                ; Y++, which is only performed if down button is being pressed
+      and #BUTTON_DOWN                                  ; Perform a bitwise AND with the accumulator
+      beq CheckUpButton                                 ; If the down button is not pressed, we skip to test the up button
+          inc first_player+Player::y_pos                                      ; Y++, which is only performed if down button is being pressed
   CheckUpButton:
       lda Buttons
-      and #BUTTON_UP              ; Perform a bitwise AND with the accumulator
-      beq :+                      ; If the up button is not pressed, we skip to the end of our button check
-          dec YPos                ; Y--, which is only performed if up button is being pressed
+      and #BUTTON_UP                                    ; Perform a bitwise AND with the accumulator
+      beq :+                                            ; If the up button is not pressed, we skip to the end of our button check
+          dec first_player+Player::y_pos                                      ; Y--, which is only performed if up button is being pressed
   :
 
     WaitForVBlank:           ; We lock the execution of the game logic here
@@ -318,17 +314,17 @@ Reset:
 ;; NMI interrupt handler
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 NMI:
-    PUSH_REGS                ; Macro to save register values by pushing them to the stack
+    PUSH_REGS                                   ; Macro to save register values by pushing them to the stack
 
-    inc Frame                ; Frame++
-    inc TempAnim             ; Frame++
+    inc Frame                                   ; Frame++
+    inc first_player+Player::t_anim             ; Frame++
 
 OAMStartDMACopy:             ; DMA copy of OAM data from RAM to PPU
     lda #$02                 ; Every frame, we copy spite data starting at $02**
     sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
     
 UpdateSpritePosition:
-    lda XPos
+    lda first_player+Player::x_pos
     sta $0203                ; Set the 1st sprite X position to be XPos
     sta $020B                ; Set the 3rd sprite X position to be XPos
     clc
@@ -336,7 +332,7 @@ UpdateSpritePosition:
     sta $0207                ; Set the 2nd sprite X position to be XPos + 8
     sta $020F                ; Set the 4th sprite X position to be XPos + 8
 
-    lda YPos
+    lda first_player+Player::y_pos
     sta $0200                ; Set the 1st sprite Y position to be YPos
     sta $0204                ; Set the 2nd sprite Y position to be YPos
     clc
@@ -361,22 +357,22 @@ SetGameClock:
 :
 
 setAnimationClock:
-    lda TempAnim
-    cmp #10
-    bne :+                  ; Se TempAnim < 30, pula a atualização
-
-        inc currentAnim         ; Incrementa currentAnim
+    lda first_player+Player::t_anim
+    cmp #30
+    bne :+                                          ; Se  < 30, pula a atualização
+        inc first_player+Player::c_anim             ; Incrementa currentAnim
         lda #0
-        sta TempAnim            ; Reseta TempAnim
-     
-        lda currentAnim
-        cmp #2                  ; Se currentAnim > 1 (ou seja, 2 ou mais)
-        bcc :+                  ; Se for menor que 2, mantém
+        sta first_player+Player::t_anim             ; Reseta 
+        lda first_player+Player::c_anim
+        cmp #2                                      ; Se currentAnim > 1 (ou seja, 2 ou mais)
+        bcc :+                                      ; Se for menor que 2, mantém
             lda #0
-            sta currentAnim         ; Reseta para 0 se passar de 1 
-              
+            sta first_player+Player::c_anim         ; Reseta para 0 se passar de 1    
 :
-jsr LoadSprites         ; Atualiza os sprites depois de mudar a animação     
+
+UpdateSprites:
+    jsr LoadSprites         ; Atualiza os sprites depois de mudar a animação    
+
 SetDrawComplete:
     lda #1
     sta IsDrawComplete       ; Set the DrawComplete flag to indicate we are done drawing to the PPU
