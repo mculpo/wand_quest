@@ -10,27 +10,29 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "ZEROPAGE"
 
-first_player:       .res .sizeof(Player) 
+Players:             .res 2 * .sizeof(Player)
+blocks:              .res 5 * .sizeof(Block)
 
 Buttons:            .res 1       ; Pressed buttons (A|B|Sel|Start|Up|Dwn|Lft|Rgt)
 PrevButtons:        .res 1       ; Stores the previous buttons from the last frame
 
 ParamY:             .res 1
 
-Frame:          .res 1       ; Counts frames (0 to 255 and repeats)
-IsDrawComplete: .res 1       ; Flag to indicate when VBlank is done drawing
-Clock60:        .res 1       ; Counter that increments per second (60 frames)
+Frame:              .res 1       ; Counts frames (0 to 255 and repeats)
+IsDrawComplete:     .res 1       ; Flag to indicate when VBlank is done drawing
+Clock60:            .res 1       ; Counter that increments per second (60 frames)
 
-BgPtr:          .res 2       ; Pointer to background address - 16bits (lo,hi)
-SprPtr:         .res 2       ; Pointer to the sprite address - 16bits (lo,hi)
-BufPtr:         .res 2       ; Pointer to the buffer address - 16bits (lo,hi)
-PalPtr:         .res 2       ; Pointer to the palette address - 16bits (lo,hi)
+BgPtr:              .res 2       ; Pointer to background address - 16bits (lo,hi)
+SprPtr:             .res 2       ; Pointer to the sprite address - 16bits (lo,hi)
+BufPtr:             .res 2       ; Pointer to the buffer address - 16bits (lo,hi)
+PalPtr:             .res 2       ; Pointer to the palette address - 16bits (lo,hi)
 
-PrevOAMCount:   .res 1       ; Store the previous number of bytes that were sent to the OAM
+OAMOffsetFrame:     .res 1       ; value that start each frame (always 4 per 4).
+PrevOAMCount:       .res 1       ; Store the previous number of bytes that were sent to the OAM
 
-Seed:           .res 2       ; Initialize 16-bit seed to any value except 0
+Seed:                                       .res 2       ; Initialize 16-bit seed to any value except 0
 
-GameState:      .res 1       ; Keep track of game state
+GameState:                                  .res 1       ; Keep track of game state
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PRG-ROM code located at $8000
@@ -149,21 +151,24 @@ FAMISTUDIO_DPCM_OFF           = $E000
 
 
 .proc LoadBlock
+    lda #32
+    sta PrevOAMCount
+
     lda #$02
     sta SprPtr+1
     lda #$00
     sta SprPtr                         ; Point SprPtr to $0200
 
     ldx #0
-    ldy #16
-LoopSprite:
-    lda SpriteBlockData, x       ; We fetch bytes from the  lookup table
-    sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
-    iny
-    inx                          ; X++
-    cpx #32
-    bne LoopSprite               ; Loop 16 times (4 hardware sprites, 4 bytes each)
-    rts
+    LoopSprite:
+        lda SpriteBlockData, x       ; We fetch bytes from the  lookup table
+        ldy PrevOAMCount
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inc PrevOAMCount
+        inx                          ; X++
+        cpx #80
+        bne LoopSprite               ; Loop 16 times (4 hardware sprites, 4 bytes each)
+
 .endproc
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subroutine to load all 16 bytes into OAM-RAM starting at $0200
@@ -174,8 +179,70 @@ LoopSprite:
     lda #$00
     sta SprPtr                         ; Point SprPtr to $0200
 
+    lda #0               ; Define o índice inicial como 0
+    LoopSprite:
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o Y  attributes
+        ;; Apenas incremento para pular a inserção do valor Y
+        ;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        inx
+        inc PrevOAMCount
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o Tiletile#  attributes
+        ;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        lda SpriteData, x
+        ldy PrevOAMCount
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        inc PrevOAMCount
+
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o attributes
+        ;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        lda SpriteData, x
+        ldy PrevOAMCount
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        inc PrevOAMCount
+
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;
+        ;; Atualiza o X  attributes
+        ;; Apenas incremento para pular a inserção do valor X
+        ;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        inx
+        inc PrevOAMCount
+
+        ldy PrevOAMCount
+        cpy #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
+        bne LoopSprite       ; Se não, continua carregando
+
+        rts
+.endproc
+
+.proc UpdateAnimationSprites
+    lda #$02
+    sta SprPtr+1
+    lda #$00
+    sta SprPtr                         ; Point SprPtr to $0200
+
     ;; Apenas para teste.
-    lda first_player+Player::c_anim
+    lda Players+Player::c_anim
     beq init_sprite      ; Se currentAnim == 0, começa do primeiro MetaSprite
 
     lda #16              ; Se currentAnim == 1, começa do segundo MetaSprite (pula 16 bytes)
@@ -186,7 +253,6 @@ LoopSprite:
 
     StartLoop:
         tax
-        ldy #0               ; Reseta y para armazenar na OAM
 
     LoopSprite:
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -194,11 +260,11 @@ LoopSprite:
         ;;
         ;; Atualiza o Y  attributes
         ;; Apenas incremento para pular a inserção do valor Y
-        ;; 
+        ;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         inx
-        iny
+        inc PrevOAMCount
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;
@@ -206,10 +272,11 @@ LoopSprite:
         ;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        lda SpriteData, x    
-        sta (SprPtr), y         ; Tile do sprite
+        lda SpriteData, x
+        ldy PrevOAMCount
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
         inx
-        iny
+        inc PrevOAMCount
 
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -218,25 +285,49 @@ LoopSprite:
         ;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        lda SpriteData, x    
-        sta (SprPtr), y         ; Atributos do sprite
+        lda SpriteData, x
+        ldy PrevOAMCount
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
         inx
-        iny
+        inc PrevOAMCount
 
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;
         ;; Atualiza o X  attributes
         ;; Apenas incremento para pular a inserção do valor X
-        ;; 
+        ;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        inx                 
-        iny                  
+        inx
+        inc PrevOAMCount
 
+        ldy PrevOAMCount
         cpy #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
         bne LoopSprite       ; Se não, continua carregando
 
+        rts
+.endproc
+
+.proc ApplySpriteFlicker
+    lda Frame
+    and #$01        ; Alterna a cada frame ímpar
+    beq NoFlicker   ; Se for par, não faz nada
+
+    ldx #0
+    HideSprites:
+        lda $0200,X      ; Pega a posição Y do sprite X na OAM
+        ora #$F8         ; Move o sprite para fora da tela
+        sta $0200,X      ; Salva de volta na OAM
+
+        inx
+        inx
+        inx
+        inx             ; Pula 4 bytes para o próximo sprite
+        cpx #32         ; No máximo 8 sprites escondidos
+        bne HideSprites
+
+    NoFlicker:
         rts
 .endproc
 
@@ -260,21 +351,28 @@ Reset:
     lda #State::PLAYING
     sta GameState            ; GameState = PLAYING
 
-    ldx #0
-    ldx first_player+Player::t_anim
-    ldx first_player+Player::c_anim
-    lda SpriteData,x
-    sta first_player+Player::y_pos
-    inx
-    inx
-    inx
-    lda SpriteData,x
-    sta first_player+Player::x_pos
+    lda #0
+    sta OAMOffsetFrame
+    sta Players+Player::t_anim
+    sta Players+Player::c_anim
 
-    jsr LoadPalette          ; Call LoadPalette subroutine to load 32 colors into our palette
-    ;;jsr LoadBackground       ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
-    jsr LoadBlock
-    jsr LoadSprites          ; Call LoadSprites subroutine to load all sprites into OAM-RAM
+    ldx #0
+    lda SpriteData,x
+    sta Players+Player::y_pos
+    inx
+    inx
+    inx
+    lda SpriteData,x
+    sta Players+Player::x_pos
+
+
+    lda OAMOffsetFrame
+    sta PrevOAMCount
+    jsr LoadPalette              ; Call LoadPalette subroutine to load 32 colors into our palette
+    ;jsr LoadBackground         ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
+    ;;jsr LoadEnemys
+    jsr LoadSprites              ; Call LoadSprites subroutine to load all sprites into OAM-RAM
+    jsr LoadBlock                ; Load All Blocks Fase
 
   InitVariables:
       lda #0
@@ -302,30 +400,43 @@ Reset:
     jsr ReadControllers      ; Read joypad and load button state
 
   CheckRightButton:
-    lda Buttons
-    and #BUTTON_RIGHT                                   ; Perform a bitwise AND with the accumulator
-    beq CheckLeftButton                                 ; If the right button is not pressed, we skip to test the left button
-        inc first_player+Player::x_pos                  ; X++, which is only performed if right button is being pressed
+        lda Buttons
+        and #BUTTON_RIGHT                                   ; Perform a bitwise AND with the accumulator
+        beq CheckLeftButton                                 ; If the right button is not pressed, we skip to test the left button
+            inc Players+Player::x_pos                  ; X++, which is only performed if right button is being pressed
+            lda #SIDE_RIGHT
+            sta Players+Player::side
   CheckLeftButton:
-      lda Buttons
-      and #BUTTON_LEFT                                  ; Perform a bitwise AND with the accumulator
-      beq CheckDownButton                               ; If the left button is not pressed, we skip to test the down button
-          dec first_player+Player::x_pos                ; X--, which is only performed if left button is being pressed
+        lda Buttons
+        and #BUTTON_LEFT                                  ; Perform a bitwise AND with the accumulator
+        beq CheckDownButton                               ; If the left button is not pressed, we skip to test the down button
+            dec Players+Player::x_pos                ; X--, which is only performed if left button is being pressed
+            lda #SIDE_LEFT
+            sta Players+Player::side
   CheckDownButton:
-      lda Buttons
-      and #BUTTON_DOWN                                  ; Perform a bitwise AND with the accumulator
-      beq CheckUpButton                                 ; If the down button is not pressed, we skip to test the up button
-          inc first_player+Player::y_pos                                      ; Y++, which is only performed if down button is being pressed
+        lda Buttons
+        and #BUTTON_DOWN                                  ; Perform a bitwise AND with the accumulator
+        beq CheckUpButton                                 ; If the down button is not pressed, we skip to test the up button
+            inc Players+Player::y_pos                ; Y++, which is only performed if down button is being pressed
+            lda #SIDE_DOWN
+            sta Players+Player::side
   CheckUpButton:
-      lda Buttons
-      and #BUTTON_UP                                    ; Perform a bitwise AND with the accumulator
-      beq :+                                            ; If the up button is not pressed, we skip to the end of our button check
-          dec first_player+Player::y_pos                                      ; Y--, which is only performed if up button is being pressed
+        lda Buttons
+        and #BUTTON_UP                                    ; Perform a bitwise AND with the accumulator
+        beq :+                                            ; If the up button is not pressed, we skip to the end of our button check
+            dec Players+Player::y_pos                ; Y--, which is only performed if up button is being pressed
+            lda #SIDE_UP
+            sta Players+Player::side
   :
 
-    WaitForVBlank:           ; We lock the execution of the game logic here
-      lda IsDrawComplete     ; Here we check and only perform a game loop call once NMI is done drawing
-      beq WaitForVBlank      ; Otherwise, we keep looping
+  lda OAMOffsetFrame
+  sta PrevOAMCount
+
+  jsr UpdateAnimationSprites
+
+  WaitForVBlank:           ; We lock the execution of the game logic here
+    lda IsDrawComplete     ; Here we check and only perform a game loop call once NMI is done drawing
+    beq WaitForVBlank      ; Otherwise, we keep looping
 
     lda #0
     sta IsDrawComplete       ; Once we're done, we set the DrawComplete flag back to 0
@@ -337,82 +448,82 @@ Reset:
 ;; NMI interrupt handler
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 NMI:
-    PUSH_REGS                                   ; Macro to save register values by pushing them to the stack
+        PUSH_REGS                                   ; Macro to save register values by pushing them to the stack
 
-    inc Frame                                   ; Frame++
-    inc first_player+Player::t_anim             ; Frame++
+        inc Frame                                   ; Frame++
+        inc Players+Player::t_anim                  ; Frame++
 
-OAMStartDMACopy:             ; DMA copy of OAM data from RAM to PPU
-    lda #$02                 ; Every frame, we copy spite data starting at $02**
-    sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
-    
-UpdateSpritePosition:
+        ;jsr ApplySpriteFlicker                      ; Aplica o flickering para alternar os sprites
 
-    ;;; Atualizando o player diretamente na memoria.
-    lda first_player+Player::x_pos
-    sta $0203                ; Set the 1st sprite X position to be XPos
-    sta $020B                ; Set the 3rd sprite X position to be XPos
-    clc
-    adc #8
-    sta $0207                ; Set the 2nd sprite X position to be XPos + 8
-    sta $020F                ; Set the 4th sprite X position to be XPos + 8
 
-    lda first_player+Player::y_pos
-    sta $0200                ; Set the 1st sprite Y position to be YPos
-    sta $0204                ; Set the 2nd sprite Y position to be YPos
-    clc
-    adc #8
-    sta $0208                ; Set the 3rd sprite Y position to be YPos + 8
-    sta $020C                ; Set the 4th sprite Y position to be YPos + 8
+    OAMStartDMACopy:             ; DMA copy of OAM data from RAM to PPU
+        lda #$02                 ; Every frame, we copy spite data starting at $02**
+        sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
 
-    ;;;; ABAIXO AQUI COLOCAR A ATUALIZAÇÃO DAS OUTRAS SPRITES JÁ CARREGADAS
-    ;;;; OS PRIMEIROS PONTEIROS SÃO PARA O PLAYER 1 E PLAYER 2 ( AQUI TMB PRETENDO COLOCAR ARRAY PARA NÃO PRECISAR, SETAR DIRETAMENTE)
-    ;;;; OS DEMAIS SÃO PARA BLOCOS E INIMIGOS, QUE VÃO SER ARRAYS.
+    UpdateSpritePosition:
+        ;; Atualizando o player diretamente na memoria.
+        lda Players+Player::x_pos
+        sta $0203                ; Set the 1st sprite X position to be XPos
+        sta $020B                ; Set the 3rd sprite X position to be XPos
+        clc
+        adc #8
+        sta $0207                ; Set the 2nd sprite X position to be XPos + 8
+        sta $020F                ; Set the 4th sprite X position to be XPos + 8
 
-RefreshRendering:
-    lda #%10010000           ; Enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
-    ora #0                   ; OR with CurrNametable (0 or 1) to set PPU_CTRL bit-0 (starting nametable)
-    sta PPU_CTRL
-    lda #%00011110           ; Enable sprites, enable background, no clipping on left side
-    sta PPU_MASK
+        lda Players+Player::y_pos
+        sta $0200                ; Set the 1st sprite Y position to be YPos
+        sta $0204                ; Set the 2nd sprite Y position to be YPos
+        clc
+        adc #8
+        sta $0208                ; Set the 3rd sprite Y position to be YPos + 8
+        sta $020C                ; Set the 4th sprite Y position to be YPos + 8
 
-SetGameClock:
-    lda Frame                ; Increment Clock60 every time we reach 60 frames (NTSC = 60Hz)
-    cmp #60                  ; Is Frame equal to #60?
-    bne :+                   ; If not, bypass Clock60 increment
-    inc Clock60              ; But if it is 60, then increment Clock60 and zero Frame counter
-    lda #0
-    sta Frame
-:
+        ;;;; ABAIXO AQUI COLOCAR A ATUALIZAÇÃO DAS OUTRAS SPRITES JÁ CARREGADAS
+        ;;;; OS PRIMEIROS PONTEIROS SÃO PARA O PLAYER 1 E PLAYER 2 ( AQUI TMB PRETENDO COLOCAR ARRAY PARA NÃO PRECISAR, SETAR DIRETAMENTE)
+        ;;;; OS DEMAIS SÃO PARA BLOCOS E INIMIGOS, QUE VÃO SER ARRAYS.
 
-setAnimationClock:
-    lda first_player+Player::t_anim
-    cmp #30
-    bne :+                                          ; Se  < 30, pula a atualização
-        inc first_player+Player::c_anim             ; Incrementa currentAnim
+    RefreshRendering:
+        lda #%10010000           ; Enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
+        ora #0                   ; OR with CurrNametable (0 or 1) to set PPU_CTRL bit-0 (starting nametable)
+        sta PPU_CTRL
+        lda #%00011110           ; Enable sprites, enable background, no clipping on left side
+        sta PPU_MASK
+
+    SetGameClock:
+        lda Frame                ; Increment Clock60 every time we reach 60 frames (NTSC = 60Hz)
+        cmp #60                  ; Is Frame equal to #60?
+        bne :+                   ; If not, bypass Clock60 increment
+        inc Clock60              ; But if it is 60, then increment Clock60 and zero Frame counter
         lda #0
-        sta first_player+Player::t_anim             ; Reseta 
-        lda first_player+Player::c_anim
-        cmp #2                                      ; Se currentAnim > 1 (ou seja, 2 ou mais)
-        bcc :+                                      ; Se for menor que 2, mantém
+        sta Frame
+    :
+
+    setAnimationClock:
+        lda Players+Player::t_anim
+        cmp #30
+        bne :+                                          ; Se  < 30, pula a atualização
+            inc Players+Player::c_anim             ; Incrementa currentAnim
             lda #0
-            sta first_player+Player::c_anim         ; Reseta para 0 se passar de 1    
-:
+            sta Players+Player::t_anim             ; Reseta 
+            lda Players+Player::c_anim
+            cmp #2                                      ; Se currentAnim > 1 (ou seja, 2 ou mais)
+            bcc :+                                      ; Se for menor que 2, mantém
+                lda #0
+                sta Players+Player::c_anim         ; Reseta para 0 se passar de 1    
+    :
 
-UpdateSprites:
-    jsr LoadSprites         ; Atualiza os sprites depois de mudar a animação    
+    SetDrawComplete:
+        lda #1
+        sta IsDrawComplete       ; Set the DrawComplete flag to indicate we are done drawing to the PPU
 
-SetDrawComplete:
-    lda #1
-    sta IsDrawComplete       ; Set the DrawComplete flag to indicate we are done drawing to the PPU
+        PULL_REGS
 
-    PULL_REGS
+        rti                      ; Return from interrupt
 
-    rti                      ; Return from interrupt
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; IRQ interrupt handler
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; IRQ interrupt handler
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 IRQ:
     rti                      ; Return from interrupt
 
@@ -476,14 +587,34 @@ SpriteBlockData:
 .byte $6C,  $04,  %10000010,  $64  ; Sprite 3 -> X=100, Y=108
 .byte $6C,  $04,  %11000010,  $6C  ; Sprite 4 -> X=108, Y=108
 
-.byte $18,  $04,  %00000010,  $18  ; Sprite 1 -> X=24, Y=24
-.byte $18,  $04,  %01000010,  $20  ; Sprite 3 -> X=24, Y=32
-.byte $20,  $04,  %10000010,  $18  ; Sprite 2 -> X=32, Y=24
-.byte $20,  $04,  %11000010,  $20  ; Sprite 4 -> X=32, Y=32
+; Meta Sprite 1 (X base = 24)
+.byte $64,  $04,  %00000010,  $18  ; Sprite 1 -> Y=24, X=24
+.byte $64,  $04,  %01000010,  $20  ; Sprite 2 -> Y=24, X=32
+.byte $6C,  $04,  %10000010,  $18  ; Sprite 3 -> Y=32, X=24
+.byte $6C,  $04,  %11000010,  $20  ; Sprite 4 -> Y=32, X=32
+
+; Meta Sprite 2 (X base = 54) (+30px)
+.byte $18,  $04,  %00000010,  $36  ; Sprite 1 -> Y=24, X=54
+.byte $20,  $04,  %10000010,  $36  ; Sprite 3 -> Y=32, X=54
+.byte $18,  $04,  %01000010,  $3E  ; Sprite 2 -> Y=24, X=62
+.byte $20,  $04,  %11000010,  $3E  ; Sprite 4 -> Y=32, X=62
+
+; Meta Sprite 3 (X base = 84) (+30px)
+.byte $18,  $04,  %00000010,  $54  ; Sprite 1 -> Y=24, X=84
+.byte $20,  $04,  %10000010,  $54  ; Sprite 3 -> Y=32, X=84
+.byte $18,  $04,  %01000010,  $5C  ; Sprite 2 -> Y=24, X=92
+.byte $20,  $04,  %11000010,  $5C  ; Sprite 4 -> Y=32, X=92
+
+; Meta Sprite 5 (X base = 144) (+30px)
+.byte $18,  $04,  %00000010,  $90  ; Sprite 1 -> Y=24, X=144
+.byte $20,  $04,  %10000010,  $90  ; Sprite 3 -> Y=32, X=144
+.byte $18,  $04,  %01000010,  $98  ; Sprite 2 -> Y=24, X=152
+.byte $20,  $04,  %11000010,  $98  ; Sprite 4 -> Y=32, X=152
+
 
 
 .segment "CHARS1"
-.incbin "wand_quest_spr.chr" 
+.incbin "wand_quest_spr.chr"
 .incbin "wand_quest_bg.chr"    ; This is the 1nd bank of CHR-ROM tiles
 
 
