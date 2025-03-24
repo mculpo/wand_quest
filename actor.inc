@@ -32,7 +32,6 @@
     t_anim  .byte
     c_anim  .byte
     side    .byte
-    screen  .byte
 .endstruct
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

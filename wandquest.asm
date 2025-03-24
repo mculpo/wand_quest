@@ -16,8 +16,6 @@ blocks:              .res 5 * .sizeof(Block)
 Buttons:            .res 1       ; Pressed buttons (A|B|Sel|Start|Up|Dwn|Lft|Rgt)
 PrevButtons:        .res 1       ; Stores the previous buttons from the last frame
 
-ParamY:             .res 1
-
 Frame:              .res 1       ; Counts frames (0 to 255 and repeats)
 IsDrawComplete:     .res 1       ; Flag to indicate when VBlank is done drawing
 Clock60:            .res 1       ; Counter that increments per second (60 frames)
@@ -27,11 +25,9 @@ SprPtr:             .res 2       ; Pointer to the sprite address - 16bits (lo,hi
 BufPtr:             .res 2       ; Pointer to the buffer address - 16bits (lo,hi)
 PalPtr:             .res 2       ; Pointer to the palette address - 16bits (lo,hi)
 
-OAMOffsetFrame:     .res 1       ; value that start each frame (always 4 per 4).
 PrevOAMCount:       .res 1       ; Store the previous number of bytes that were sent to the OAM
 
 Seed:                                       .res 2       ; Initialize 16-bit seed to any value except 0
-
 GameState:                                  .res 1       ; Keep track of game state
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -151,9 +147,6 @@ FAMISTUDIO_DPCM_OFF           = $E000
 
 
 .proc LoadBlock
-    lda #32
-    sta PrevOAMCount
-
     lda #$02
     sta SprPtr+1
     lda #$00
@@ -352,9 +345,9 @@ Reset:
     sta GameState            ; GameState = PLAYING
 
     lda #0
-    sta OAMOffsetFrame
     sta Players+Player::t_anim
     sta Players+Player::c_anim
+    sta PrevOAMCount
 
     ldx #0
     lda SpriteData,x
@@ -364,12 +357,9 @@ Reset:
     inx
     lda SpriteData,x
     sta Players+Player::x_pos
-
-
-    lda OAMOffsetFrame
-    sta PrevOAMCount
+    
     jsr LoadPalette              ; Call LoadPalette subroutine to load 32 colors into our palette
-    ;jsr LoadBackground         ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
+    jsr LoadBackground         ; Call LoadBackground subroutine to load a full nametable of tiles and attributes
     ;;jsr LoadEnemys
     jsr LoadSprites              ; Call LoadSprites subroutine to load all sprites into OAM-RAM
     jsr LoadBlock                ; Load All Blocks Fase
@@ -381,7 +371,7 @@ Reset:
 
       lda #$10
       sta Seed+1
-      sta Seed+0               ; Initialize the Seed with any value different than zero
+      sta Seed               ; Initialize the Seed with any value different than zero
 
   EnableRendering:
       lda #%10010000           ; Enable NMI and set background to use the 2nd pattern table (at $1000)
@@ -429,7 +419,7 @@ Reset:
             sta Players+Player::side
   :
 
-  lda OAMOffsetFrame
+  lda #0
   sta PrevOAMCount
 
   jsr UpdateAnimationSprites
@@ -559,10 +549,10 @@ SpriteData:
 ;--------------------------------
 ; Mage: Sprite 1
 ;      Y   tile#  attributes   X
-.byte $AE,  $00,  %00000011,  $98
-.byte $AE,  $00,  %01000011,  $A0
-.byte $B6,  $01,  %00000011,  $98
-.byte $B6,  $01,  %01000011,  $A0
+.byte $AE,  $00,  %00000000,  $98
+.byte $AE,  $00,  %01000000,  $A0
+.byte $B6,  $01,  %00000000,  $98
+.byte $B6,  $01,  %01000000,  $A0
 ;--------------------------------
 ; Mage: Sprite 2
 ;      Y   tile#  attributes   X
@@ -570,6 +560,7 @@ SpriteData:
 .byte $AE,  $03,  %01000011,  $A0
 .byte $B6,  $02,  %00000011,  $98
 .byte $B6,  $02,  %01000011,  $A0
+
 
 ; Sprite Attribute Byte:
 ;-----------------------
