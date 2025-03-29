@@ -60,3 +60,5 @@ SIDE_LEFT  = %11  ; 3 em binário
 ;; Maximum number of actors that we can have
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 MAX_ACTORS = 10
+
+MAX_BLOCKS = 5
