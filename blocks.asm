@@ -52,6 +52,58 @@
         rts
 .endproc
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to update all active blocks.
+;; This function iterates through the block array and updates only blocks 
+;; that are not marked as NULL.
+;;
+;; Each block's position (X, Y) is updated by adding its velocity (XVel, YVel).
+;; Blocks that are marked as NULL are skipped.
+;;
+;; The loop iterates over all possible block slots, checking their type 
+;; before applying updates.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc UpdateBlock
+    
+    ldx #0
+    LoopBlocks:
+        cpx #MAX_BLOCKS * .sizeof(Block)        ; Reached maximum number of blocks allowed in the array?
+        beq EndRoutine                          ; Then we skip and don't add a new actor
+        lda blocks+Block::Type,x
+        cmp #GameObjectType::NULL               ; If the actor type of this array position is NULL
+        beq NextBlock                              ; Then: we found an empty slot, proceed to add actor to position [x]
+    ; Atualiza posição apenas se o bloco for válido
+        lda blocks+Block::XPos,x
+        adc blocks+Block::XVel,x
+        sta blocks+Block::XPos,x
+
+        lda blocks+Block::YPos,x
+        adc blocks+Block::YVel,x
+        sta blocks+Block::YPos,x
+
+    NextBlock:
+        txa
+        clc
+        adc #.sizeof(Block)                     ; Move para o próximo bloco
+        tax
+        jmp LoopBlocks
+       
+    EndRoutine:
+        rts
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to render all active blocks.
+;; This function iterates through the block array and renders only blocks 
+;; that are not marked as NULL.
+;;
+;; The rendering process updates OAM memory to display the blocks as sprites.
+;; Each block's position (X, Y) is stored in temporary parameters before 
+;; calling the RenderOAMBlock subroutine.
+;;
+;; The loop iterates over all possible block slots, checking their type 
+;; before rendering.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc RenderBlocks
     
     lda #$02
@@ -163,12 +215,6 @@
         adc #8  ; Move 8 pixels para a direita
         sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
         iny
-
-    nop
-    nop
-    nop
-    nop
-
     tya
     sta PrevOAMCount
 

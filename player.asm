@@ -1,5 +1,15 @@
 .segment "CODE"
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to process player input and update position accordingly.
+;;
+;; This function checks for directional button presses (Right, Left, Down, Up)
+;; and updates the player's position accordingly. Before finalizing a move,
+;; it calls `CheckCollisions` to ensure movement is valid.
+;;
+;; If a collision is detected (`Collision == 1`), movement is canceled.
+;; The player's facing direction (`side`) is also updated based on movement.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc InputPlayer
     lda Players+Player::x_pos       ; Carrega x_pos do player
     sta ParamXPos                  ; Armazena em ParamXPos
@@ -12,7 +22,7 @@
 
                 inc ParamXPos                                   ; Incrementa ParamXPos
 
-                jsr CheckBlocksCollision
+                jsr CheckCollisions
                 lda Collision                                        ; Compara o valor do acumulador A com 1
                 cmp #1
                 beq :+ 
@@ -26,7 +36,7 @@
 
                 dec ParamXPos                  ; Incrementa ParamXPos
 
-                jsr CheckBlocksCollision
+                jsr CheckCollisions
                 lda Collision
                 cmp #1
                 beq :+ 
@@ -40,7 +50,7 @@
 
                 inc ParamYPos                  ; Incrementa ParamXPos
 
-                jsr CheckBlocksCollision
+                jsr CheckCollisions
                 lda Collision
                 cmp #1
                 beq :+ 
@@ -52,7 +62,7 @@
             and #BUTTON_UP                                    ; Perform a bitwise AND with the accumulator
             beq :+                                            ; If the up button is not pressed, we skip to the end of our button check
                 dec ParamYPos                                 ; Incrementa ParamXPos
-                jsr CheckBlocksCollision
+                jsr CheckCollisions
                 lda Collision
                 cmp #1
                 beq :+ 
@@ -63,6 +73,15 @@
     rts
 .endproc
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to initialize the player.
+;; 
+;; This function sets the player's animation counters (`t_anim`, `c_anim`)
+;; and resets the previous OAM sprite count. It also assigns an initial
+;; position for the player on the screen.
+;;
+;; The player's X and Y coordinates are hardcoded for now.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc LoadPlayer
     lda #0
     sta Players+Player::t_anim
@@ -84,7 +103,16 @@
     rts
 .endproc
 
-.proc UpdateAnimationSprites
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to update the player's animation sprites.
+;;
+;; This function selects the correct sprite data based on the player's
+;; current animation state (`c_anim`). It then loads the appropriate 
+;; MetaSprite data from `SpriteData` and writes it to OAM ($0200).
+;;
+;; The animation system works by loading 16 bytes (4 sprites of 4 bytes each).
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc RenderPlayer
     lda #$02
     sta SprPtr+1
     lda #$00
@@ -92,68 +120,141 @@
 
     ;; Apenas para teste.
     lda Players+Player::c_anim
-    beq init_sprite      ; Se currentAnim == 0, começa do primeiro MetaSprite
+    beq SetSprite      ; Se currentAnim == 0, começa do primeiro MetaSprite
 
     lda #16              ; Se currentAnim == 1, começa do segundo MetaSprite (pula 16 bytes)
     jmp StartLoop
 
-    init_sprite:
+    SetSprite:
         lda #0               ; Define o índice inicial como 0
 
     StartLoop:
         tax
         ldy PrevOAMCount
-    LoopSprite:
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;
-        ;; Atualiza o Y  attributes
-        ;; Apenas incremento para pular a inserção do valor Y
-        ;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    Side1:
+        lda Players+Player::y_pos
+        sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
         inx
         iny
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;
-        ;; Atualiza o Tiletile#  attributes
-        ;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
         lda SpriteData, x
         sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
         inx
         iny
 
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;
-        ;; Atualiza o attributes
-        ;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         lda SpriteData, x
         sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
         inx
         iny
 
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;
-        ;; Atualiza o X  attributes
-        ;; Apenas incremento para pular a inserção do valor X
-        ;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        lda Players+Player::x_pos
+        sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
         inx
         iny
 
-        cpy #16              ; 16 bytes carregados? (4 sprites de 4 bytes)
-        bne LoopSprite       ; Se não, continua carregando
+    Side2:
+        lda Players+Player::y_pos
+        sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+        
+        lda SpriteData, x
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+        lda SpriteData, x
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+        lda Players+Player::x_pos
+        clc
+        adc #8
+        sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+    Side3:
+        lda Players+Player::y_pos
+        clc
+        adc #8
+        sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+        
+        lda SpriteData, x
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+        lda SpriteData, x
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+        lda Players+Player::x_pos
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+    Side4:
+        lda Players+Player::y_pos
+        clc
+        adc #8
+        sta (SprPtr), y              ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+        
+        lda SpriteData, x
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+        lda SpriteData, x
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
+        lda Players+Player::x_pos
+        clc
+        adc #8
+        sta (SprPtr), y      ; We store the bytes starting at OAM address $0200
+        inx
+        iny
+
         tya
         sta PrevOAMCount
         rts
+.endproc
+
+
+.proc CheckCollisions
+    txa
+    pha                                ; Push and save X register in the stack
+    ldx #0
+    stx Collision                      ; Collision = 0
+
+    ; jsr CheckBackgroudCollision
+    ; lda Collision
+    ; cmp #1
+    ; bne :+
+    ;     jmp FinishCollisionCheck
+    ; :
+
+    jsr CheckBlocksCollision
+    ; lda Collision
+    ; cmp #1
+    ; bne :+
+    ;     jmp FinishCollisionCheck
+    ; :
+
+    FinishCollisionCheck:
+
+    pla
+    tax                                ; Pull and restore the old value of X
+
+    rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -161,19 +262,6 @@
 ;; Params = ParamXPos, ParamYPos (are the X and Y position of the missile)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc CheckBlocksCollision
-    txa
-    pha                                ; Push and save X register in the stack
-
-    ldx #0
-    stx Collision                      ; Collision = 0
-
-    jsr FindBackgroundTile
-    lda Collision
-    cmp #1
-    bne :+
-        jmp FinishCollisionCheck
-    :
-
   CollisionLoop:
     cpx #MAX_BLOCKS * .sizeof(Block)   ; We loop all entities, looking for blocks
     beq FinishCollisionCheck
@@ -211,10 +299,7 @@
       jmp CollisionLoop         ; Loop to check the next actor to see if it's an enemy (airplane)
 
   FinishCollisionCheck:
-      pla
-      tax                                ; Pull and restore the old value of X
-
-      rts
+    rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -263,114 +348,132 @@
       rts
 .endproc
 
-.proc FindBackgroundTile
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to check for collisions between the player and the background.
+;; This function reads the Name Table and verifies if any of the four corners 
+;; of the player's hitbox overlap with a predefined collision tile ($99).
+;;
+;; The collision check is performed at four points:
+;;   - CheckA: Top-left corner of the player’s hitbox
+;;   - CheckB: Top-right corner
+;;   - CheckC: Bottom-left corner
+;;   - CheckD: Bottom-right corner
+;;
+;; The player's pixel coordinates (X, Y) are converted into tile coordinates
+;; by dividing by 8 (since each tile is 8x8 pixels).
+;;
+;; If any of the four points detect a collision tile, the Collision flag is set.
+;; Registers are pushed at the beginning and restored before returning.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.proc CheckBackgroudCollision
     PUSH_REGS
 
-CheckA:
-    lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-    sta BgPtr
-    lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-    sta BgPtr+1
+    CheckA:
+        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
+        sta BgPtr
+        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
+        sta BgPtr+1
 
-    lda ParamXPos
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX1
+        lda ParamXPos
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX1
 
-    lda ParamYPos
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX2
-    
-    lda ParamRectX2
-    jsr MultiplyBy32YAndAddX
+        lda ParamYPos
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX2
+        
+        lda ParamRectX2
+        jsr MultiplyBy32YAndAddX
 
-    ldy ParamRectX2
-    lda (BgPtr), y
-    sta ParamData
+        ldy ParamRectX2
+        lda (BgPtr), y
+        sta ParamData
 
-    lda ParamData
-    cmp #$99      ; Compara A com $99
-    bcc :+
-        lda #1
-        sta Collision
-        PULL_REGS
-        rts 
-    :
-    
-CheckB:
-    lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-    sta BgPtr
-    lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-    sta BgPtr+1
+        lda ParamData
+        cmp #$99      ; Compara A com $99
+        bcc :+
+            lda #1
+            sta Collision
+            PULL_REGS
+            rts 
+        :
+        
+    CheckB:
+        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
+        sta BgPtr
+        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
+        sta BgPtr+1
 
-    lda ParamXPos
-    clc 
-    adc #16
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX1
+        lda ParamXPos
+        clc 
+        adc #16
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX1
 
-    lda ParamYPos
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX2
-    
-    lda ParamRectX2
-    jsr MultiplyBy32YAndAddX
+        lda ParamYPos
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX2
+        
+        lda ParamRectX2
+        jsr MultiplyBy32YAndAddX
 
-    ldy ParamRectX2
-    lda (BgPtr), y
-    sta ParamData
+        ldy ParamRectX2
+        lda (BgPtr), y
+        sta ParamData
 
-    lda ParamData
-    cmp #$99      ; Compara A com $99
-    bcc :+
-        lda #1
-        sta Collision
-        PULL_REGS
-        rts 
-    :
-CheckC:
-    lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-    sta BgPtr
-    lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-    sta BgPtr+1
+        lda ParamData
+        cmp #$99      ; Compara A com $99
+        bcc :+
+            lda #1
+            sta Collision
+            PULL_REGS
+            rts 
+        :
+    CheckC:
+        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
+        sta BgPtr
+        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
+        sta BgPtr+1
 
-    lda ParamXPos
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX1
+        lda ParamXPos
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX1
 
-    lda ParamYPos
-    clc 
-    adc #16
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX2
-    
-    lda ParamRectX2
-    jsr MultiplyBy32YAndAddX
+        lda ParamYPos
+        clc 
+        adc #16
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX2
+        
+        lda ParamRectX2
+        jsr MultiplyBy32YAndAddX
 
-    ldy ParamRectX2
-    lda (BgPtr), y
-    sta ParamData
+        ldy ParamRectX2
+        lda (BgPtr), y
+        sta ParamData
 
-    lda ParamData
-    cmp #$99      ; Compara A com $99
-    bcc :+
-        lda #1
-        sta Collision
-        PULL_REGS
-        rts 
-    :
-CheckD:
+        lda ParamData
+        cmp #$99      ; Compara A com $99
+        bcc :+
+            lda #1
+            sta Collision
+            PULL_REGS
+            rts 
+        :
+    CheckD:
     lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
     sta BgPtr
     lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
@@ -413,8 +516,11 @@ CheckD:
 
 .endproc
 
-; Calcula a posição do tile no Name Table (32 tiles por linha)
-; Endereço = tileY * 32 + tileX
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Calculates the tile position in the Name Table (32 tiles per row)
+;; Address = tileY * 32 + tileX
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc MultiplyBy32YAndAddX
     ldx #0
     LoopMultGeneric:

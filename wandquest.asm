@@ -63,7 +63,7 @@ Reset:
     sta GameState            ; GameState = PLAYING
 
     jsr LoadPalette
-    jsr LoadBackground
+    ;;jsr LoadBackground
     ;;jsr LoadEnemys
     jsr LoadPlayer
     jsr LoadAllBlock
@@ -96,7 +96,9 @@ Reset:
     lda #0
     sta PrevOAMCount
 
-    jsr UpdateAnimationSprites
+    jsr UpdateBlock
+
+    jsr RenderPlayer
     jsr RenderBlocks
 
     WaitForVBlank:           ; We lock the execution of the game logic here
@@ -125,23 +127,7 @@ NMI:
         lda #$02                 ; Every frame, we copy spite data starting at $02**
         sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
 
-    UpdateSpritePosition:
-        ;; Atualizando o player diretamente na memoria.
-        lda Players+Player::x_pos
-        sta $0203                ; Set the 1st sprite X position to be XPos
-        sta $020B                ; Set the 3rd sprite X position to be XPos
-        clc
-        adc #8
-        sta $0207                ; Set the 2nd sprite X position to be XPos + 8
-        sta $020F                ; Set the 4th sprite X position to be XPos + 8
-
-        lda Players+Player::y_pos
-        sta $0200                ; Set the 1st sprite Y position to be YPos
-        sta $0204                ; Set the 2nd sprite Y position to be YPos
-        clc
-        adc #8
-        sta $0208                ; Set the 3rd sprite Y position to be YPos + 8
-        sta $020C                ; Set the 4th sprite Y position to be YPos + 8
+    ;;jsr UpdatePlayerPositionOAM
 
         ;;;; ABAIXO AQUI COLOCAR A ATUALIZAÇÃO DAS OUTRAS SPRITES JÁ CARREGADAS
         ;;;; OS PRIMEIROS PONTEIROS SÃO PARA O PLAYER 1 E PLAYER 2 ( AQUI TMB PRETENDO COLOCAR ARRAY PARA NÃO PRECISAR, SETAR DIRETAMENTE)
