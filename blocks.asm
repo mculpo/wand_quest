@@ -44,9 +44,12 @@
         sta blocks+Block::YPos,x
 
         lda #0
+        sta blocks+Block::Screen,x      ; Every actor starts at Screen 0 
+        sta blocks+Block::Side, x
+
+        lda #3
         sta blocks+Block::XVel,x        ; Every actor starts at Screen 0
         sta blocks+Block::YVel,x        ; Every actor starts at Screen 0
-        sta blocks+Block::Screen,x      ; Every actor starts at Screen 0 
     EndRoutine:
         PULL_REGS
         rts
@@ -64,30 +67,67 @@
 ;; before applying updates.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc UpdateBlock
-    
     ldx #0
     LoopBlocks:
-        cpx #MAX_BLOCKS * .sizeof(Block)        ; Reached maximum number of blocks allowed in the array?
-        beq EndRoutine                          ; Then we skip and don't add a new actor
-        lda blocks+Block::Type,x
-        cmp #GameObjectType::NULL               ; If the actor type of this array position is NULL
-        beq NextBlock                              ; Then: we found an empty slot, proceed to add actor to position [x]
-    ; Atualiza posição apenas se o bloco for válido
-        lda blocks+Block::XPos,x
-        adc blocks+Block::XVel,x
-        sta blocks+Block::XPos,x
+        cpx #MAX_BLOCKS * .sizeof(Block)  ; Reached max number of blocks?
+        beq EndRoutine                    ; Exit if so
 
+        lda blocks+Block::Type,x
+        cmp #GameObjectType::NULL         ; Check if block is empty
+        beq NextBlock                     ; Skip if empty
+
+        lda blocks+Block::Side,x
+        cmp #Side::NONE                   ; Ignore if it has no movement
+        beq NextBlock
+
+        cmp #Side::UP
+        beq MoveUp
+
+        cmp #Side::DOWN
+        beq MoveDown
+
+        cmp #Side::RIGHT
+        beq MoveRight
+
+        cmp #Side::LEFT
+        beq MoveLeft
+
+        jmp NextBlock                      ; Fallback (shouldn't happen)
+
+    MoveUp:
+        sec  
+        lda blocks+Block::YPos,x
+        sbc blocks+Block::YVel,x
+        sta blocks+Block::YPos,x
+        jmp NextBlock
+
+    MoveDown:
+        clc
         lda blocks+Block::YPos,x
         adc blocks+Block::YVel,x
         sta blocks+Block::YPos,x
+        jmp NextBlock
+
+    MoveRight:
+        clc
+        lda blocks+Block::XPos,x
+        adc blocks+Block::XVel,x
+        sta blocks+Block::XPos,x
+        jmp NextBlock
+
+    MoveLeft:
+        sec
+        lda blocks+Block::XPos,x
+        sbc blocks+Block::XVel,x
+        sta blocks+Block::XPos,x
 
     NextBlock:
         txa
         clc
-        adc #.sizeof(Block)                     ; Move para o próximo bloco
+        adc #.sizeof(Block)                ; Move to the next block
         tax
         jmp LoopBlocks
-       
+
     EndRoutine:
         rts
 .endproc

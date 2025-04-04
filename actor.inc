@@ -2,10 +2,11 @@
 ;; Enumeration with the different types of actors of our game
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .enum Side
-    UP = 0
-    DOWN = 1
-    RIGHT = 2
-    LEFT = 3
+    NONE = 0
+    UP = 1
+    DOWN = 2
+    RIGHT = 3
+    LEFT = 4
 .endenum
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -39,6 +40,7 @@
     XVel   .byte
     YVel   .byte
     Screen .byte
+    Side   .byte
 .endstruct
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

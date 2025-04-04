@@ -15,6 +15,41 @@
     sta ParamXPos                  ; Armazena em ParamXPos
     lda Players+Player::y_pos       ; Carrega y_pos do player
     sta ParamYPos                  ; Armazena em ParamYPos
+    CheckBButton:
+        lda Buttons
+        and #BUTTON_B
+        beq CheckRightButton
+
+            lda PrevButtons       
+            cmp Buttons
+            beq CheckRightButton  
+
+                lda Players+Player::side
+                cmp #Side::RIGHT
+                beq MoveRight
+                cmp #Side::LEFT
+                beq MoveLeft
+                cmp #Side::DOWN
+                beq MoveDown
+                cmp #Side::UP
+                beq MoveUp
+
+        MoveRight:
+            inc ParamXPos
+            jsr CastSpell
+
+        MoveLeft:
+            dec ParamXPos
+            jsr CastSpell
+
+        MoveDown:
+            inc ParamYPos
+            jsr CastSpell
+
+        MoveUp:
+            dec ParamYPos
+            jsr CastSpell
+
     CheckRightButton:
             lda Buttons
             and #BUTTON_RIGHT                                   ; Perform a bitwise AND with the accumulator
@@ -27,7 +62,7 @@
                 cmp #1
                 beq :+ 
                 inc Players+Player::x_pos                       ; X++, which is only performed if right button is being pressed
-                lda #SIDE_RIGHT
+                lda #Side::RIGHT
                 sta Players+Player::side
     CheckLeftButton:
             lda Buttons
@@ -41,7 +76,7 @@
                 cmp #1
                 beq :+ 
                 dec Players+Player::x_pos                     ; X--, which is only performed if left button is being pressed
-                lda #SIDE_LEFT
+                lda #Side::LEFT
                 sta Players+Player::side
     CheckDownButton:
             lda Buttons
@@ -55,7 +90,7 @@
                 cmp #1
                 beq :+ 
                 inc Players+Player::y_pos                     ; Y++, which is only performed if down button is being pressed
-                lda #SIDE_DOWN
+                lda #Side::DOWN
                 sta Players+Player::side
     CheckUpButton:
             lda Buttons
@@ -67,7 +102,7 @@
                 cmp #1
                 beq :+ 
                 dec Players+Player::y_pos                     ; Y--, which is only performed if up button is being pressed
-                lda #SIDE_UP
+                lda #Side::UP
                 sta Players+Player::side
     :
     rts
@@ -228,6 +263,47 @@
         rts
 .endproc
 
+.proc CastSpell
+    ldx #0
+    stx Collision                      ; Collision = 0
+
+    CollisionLoop:
+        cpx #MAX_BLOCKS * .sizeof(Block)   ; Verifica se chegou ao fim da lista
+        beq FinishCollisionCheck
+
+        lda blocks+Block::Type,x           
+        cmp #GameObjectType::NULL          
+        beq NextEnemy
+
+        lda blocks+Block::XPos,x
+        sta ParamRectX1
+        adc #16                             ; X2 = X1 + 16
+        sta ParamRectX2
+
+        lda blocks+Block::YPos,x
+        sta ParamRectY1
+        adc #16                             ; Y2 = Y1 + 16
+        sta ParamRectY2
+        
+        jsr IsBoundingBoxColliding
+
+        lda Collision
+        beq NextEnemy
+
+        lda Players+Player::side
+        sta blocks+Block::Side, x
+        jmp FinishCollisionCheck            ; Sai do loop, pois encontrou colisão
+    
+  NextEnemy:
+      txa
+      clc
+      adc #.sizeof(Block)              ; X += sizeof(Actor)
+      tax
+      jmp CollisionLoop         ; Loop to check the next actor to see if it's an enemy (airplane)
+
+  FinishCollisionCheck:
+    rts
+.endproc
 
 .proc CheckCollisions
     txa
@@ -262,34 +338,30 @@
 ;; Params = ParamXPos, ParamYPos (are the X and Y position of the missile)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc CheckBlocksCollision
-  CollisionLoop:
-    cpx #MAX_BLOCKS * .sizeof(Block)   ; We loop all entities, looking for blocks
-    beq FinishCollisionCheck
-      lda blocks+Block::Type,x          ; Load the type of the actor we are looping
-      cmp #GameObjectType::NULL
-      beq NextEnemy                     ; If it's NOT NULL, bypass this enemy and move check the next one
+    CollisionLoop:
+        cpx #MAX_BLOCKS * .sizeof(Block)   ; We loop all entities, looking for blocks
+        beq FinishCollisionCheck
 
-      ;; LOAD BOUNDING BOX X1, Y1, X2, and Y2
-      lda blocks+Block::XPos,x          ; Bounding Box X1
-      sta ParamRectX1
-      lda blocks+Block::YPos,x          ; Bouding Box Y1
-      sta ParamRectY1
+        lda blocks+Block::Type,x          ; Load the type of the actor we are looping
+        cmp #GameObjectType::NULL
+        beq NextEnemy                     ; If it's NOT NULL, bypass this enemy and move check the next one
 
-      lda blocks+Block::XPos,x
-      clc
-      adc #16
-      sta ParamRectX2
+        ;; SETUP BOUNDING BOX
+            lda blocks+Block::XPos,x
+            sta ParamRectX1
+            adc #16                             ; X2 = X1 + 16
+            sta ParamRectX2
 
-      lda blocks+Block::YPos,x
-      clc
-      adc #16
-      sta ParamRectY2
+            lda blocks+Block::YPos,x
+            sta ParamRectY1
+            adc #16                             ; Y2 = Y1 + 16
+            sta ParamRectY2
 
-      jsr IsBoundingBoxColliding
+            jsr IsBoundingBoxColliding
 
-      lda Collision
-      beq NextEnemy                    ; If no collision, don't do anything
-        jmp FinishCollisionCheck       ; Also, if collision happened we stop looping other enemies and leave the subroutine
+            lda Collision
+            beq NextEnemy                    ; If no collision, don't do anything
+                jmp FinishCollisionCheck       ; Also, if collision happened we stop looping other enemies and leave the subroutine
 
   NextEnemy:
       txa
@@ -307,46 +379,42 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc IsBoundingBoxColliding
-    ;; Verifica colisão entre duas bounding boxes: Jogador e Bloco
+    ;; Checks for collision between two bounding boxes: Player and Block
 
-    ;; 1. Verifica se o lado direito do jogador não está à esquerda do bloco
+    ;; 1. The player's right side must not be to the left of the block
     lda ParamXPos
-    clc
-    adc #12           ;; valor se tivesse uma variavel para o PlayerRectX2
-    cmp ParamRectX1    
-    bcc NoCollision    
+    adc #12           ;; PlayerRectX2
+    sbc ParamRectX1   ;; Subtracts block's X1
+    bcc NoCollision   ;; If result < 0, no collision
 
-    ;; 2. Verifica se o lado esquerdo do jogador não está à direita do bloco
+    ;; 2. The player's left side must not be to the right of the block
     lda ParamXPos
-    clc
-    adc #2
-    cmp ParamRectX2    
-    bcs NoCollision    
+    adc #2            ;; PlayerRectX1
+    sbc ParamRectX2   ;; Subtracts block's X2
+    bcs NoCollision   ;; If result >= 0, no collision
 
-    ;; 3. Verifica se a parte inferior do jogador não está acima do bloco
+    ;; 3. The player's bottom must not be above the block
     lda ParamYPos
-    clc
-    adc #16        ;; valor se tivesse uma variavel para o PlayerRectY2
-    cmp ParamRectY1    
-    bcc NoCollision    
+    adc #16           ;; PlayerRectY2
+    sbc ParamRectY1   ;; Subtracts block's Y1
+    bcc NoCollision   ;; If result < 0, no collision
 
-    ;; 4. Verifica se o topo do jogador não está abaixo da parte inferior do bloco
+    ;; 4. The player's top must not be below the block's bottom
     lda ParamYPos
-    cmp ParamRectY2    
-    bcs NoCollision    
+    sbc ParamRectY2   ;; Subtracts block's Y2
+    bcs NoCollision   ;; If result >= 0, no collision
 
-    ;; Se passou por todas as verificações, há colisão!
+    ;; If all checks passed, there is a collision!
     lda #1
     sta Collision
-    jmp EndCollisionCheck
+    rts               ;; Exit function
 
   NoCollision:
-      lda #0
-      sta Collision
-
-  EndCollisionCheck:
-      rts
+    lda #0
+    sta Collision
+    rts
 .endproc
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subroutine to check for collisions between the player and the background.
@@ -540,3 +608,9 @@
     :
     rts
 .endproc
+
+
+SpriteOffsetsX:
+    .byte 0,  8,  0,  8    ; X offsets for 16x16 MetaSprite
+SpriteOffsetsY:
+    .byte 0,  0,  8,  8    ; Y offsets for 16x16 MetaSprite
