@@ -22,15 +22,16 @@ Collision:          .res 1       ; Flag if a collision happened or not
 ParamType:          .res 1
 ParamXPos:          .res 1
 ParamYPos:          .res 1
-ParamTileNum:       .res 1
-ParamNumTiles:      .res 1
-ParamAttribs:       .res 1
+
 ParamRectX1:        .res 1
 ParamRectX2:        .res 1
 ParamRectY1:        .res 1
 ParamRectY2:        .res 1
-ParamData:          .res 1
-ParamScreen:        .res 1
+
+ParamNumActor:              .res 1
+ParamCurrentNumActor:       .res 1
+ParamData:                  .res 1
+ParamScreen:                .res 1
 
 PrevOAMCount:       .res 1
 
