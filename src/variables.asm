@@ -1,5 +1,7 @@
 .segment "ZEROPAGE"
 
+
+
 Buttons:                                .res 1       ; Botões pressionados
 PrevButtons:                            .res 1       ; Botões pressionados no quadro anterior
 
@@ -18,15 +20,12 @@ ParamXPos:                              .res 1
 ParamX2Pos:                             .res 1
 ParamYPos:                              .res 1
 ParamY2Pos:                             .res 1
-
 ParamRectX1:                            .res 1
 ParamRectX2:                            .res 1
 ParamRectY1:                            .res 1
 ParamRectY2:                            .res 1
 
-ParamNumActor:                          .res 1
 ParamCurrentNumActor:                   .res 1
-ParamData:                              .res 1
 ParamScreen:                            .res 1
 
 .segment "RAM"

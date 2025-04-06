@@ -62,10 +62,10 @@ Reset:
     sta GameState            ; GameState = PLAYING
 
     jsr LoadPalette
-    ;;jsr LoadBackground
+    jsr LoadBackground
     ;;jsr LoadEnemys
     jsr LoadPlayer
-    jsr LoadAllBlock
+    ;jsr LoadAllBlock
 
   InitVariables:
       lda #0
@@ -82,7 +82,15 @@ Reset:
       lda #0
       sta PPU_SCROLL           ; Disable scroll in X
       sta PPU_SCROLL           ; Disable scroll in Y
-      lda #%00011110
+      lda #%00011000   ; PPU_MASK configuração:
+                 ; Bit 7: 0 - Intensifica o vermelho (não usado normalmente)
+                 ; Bit 6: 0 - Intensifica o verde  (não usado normalmente)
+                 ; Bit 5: 0 - Intensifica o azul   (não usado normalmente)
+                 ; Bit 4: 1 - Mostra o background (ativa a renderização do background)
+                 ; Bit 3: 1 - Mostra os sprites (ativa a renderização de sprites)
+                 ; Bit 2: 1 - Mostra o background na borda esquerda de 8 pixels (sem recorte)
+                 ; Bit 1: 1 - Mostra os sprites na borda esquerda de 8 pixels (sem recorte)
+                 ; Bit 0: 0 - Desativa o modo em tons de cinza (usa a paleta colorida normal)
       sta PPU_MASK             ; Set PPU_MASK bits to render the background
 
   GameLoop:
@@ -182,9 +190,9 @@ IRQ:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 PaletteData:
 .incbin "palettes_1.dat"
-BackgroundData:
-.incbin "wq_nametable_0.nam"
-;.include "nametable0.asm"
+; BackgroundData:
+; .incbin "wq_nametable_0.nam"
+.include "nametable0.asm"
 
 ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; ;; Here goes the encoded music data that was exported by FamiStudio
