@@ -1,14 +1,14 @@
-.include "consts.inc"
-.include "header.inc"
-.include "actor.inc"
-.include "state.inc"
-.include "reset.inc"
-.include "utils.inc"
+.include "inc/consts.inc"
+.include "inc/header.inc"
+.include "inc/actor.inc"
+.include "inc/state.inc"
+.include "inc/reset.inc"
+.include "inc/utils.inc"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Variables declared in RAM zero-page
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.include "variables.asm"
+.include "src/variables.asm"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PRG-ROM code located at $8000
@@ -36,11 +36,10 @@ FAMISTUDIO_CFG_SMOOTH_VIBRATO = 1
 FAMISTUDIO_USE_RELEASE_NOTES  = 1
 FAMISTUDIO_DPCM_OFF           = $E000
 
-.include "audioengine.asm"
-.include "utils.asm"
-.include "ppu_utils.asm"
-.include "blocks.asm"
-.include "player.asm"
+.include "src/audioengine.asm"
+.include "src/utils.asm"
+.include "src/blocks.asm"
+.include "src/player.asm"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Reset handler (called when the NES resets or powers on)
@@ -210,17 +209,17 @@ SpriteData:
 ;--------------------------------
 ; Mage: Sprite 1
 ;      Y   tile#  attributes   X
-.byte $AE,  $00,  %00000001,  $98
-.byte $AE,  $00,  %01000001,  $A0
-.byte $B6,  $01,  %00000001,  $98
-.byte $B6,  $01,  %01000001,  $A0
+.byte $AE,  $00,  %00000011,  $98
+.byte $AE,  $00,  %01000011,  $A0
+.byte $B6,  $01,  %00000011,  $98
+.byte $B6,  $01,  %01000011,  $A0
 ;--------------------------------
 ; Mage: Sprite 2
 ;      Y   tile#  attributes   X
-.byte $AE,  $03,  %00000001,  $98
-.byte $AE,  $03,  %01000001,  $A0
-.byte $B6,  $02,  %00000001,  $98
-.byte $B6,  $02,  %01000001,  $A0
+.byte $AE,  $03,  %00000011,  $98
+.byte $AE,  $03,  %01000011,  $A0
+.byte $B6,  $02,  %00000011,  $98
+.byte $B6,  $02,  %01000011,  $A0
 
 
 ; Sprite Attribute Byte:

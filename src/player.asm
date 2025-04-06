@@ -11,10 +11,18 @@
 ;; The player's facing direction (`side`) is also updated based on movement.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc InputPlayer
+    clc 
     lda Players+Player::x_pos       ; Carrega x_pos do player
     sta ParamXPos                  ; Armazena em ParamXPos
+    adc #16
+    sta ParamX2Pos
+
+    clc 
     lda Players+Player::y_pos       ; Carrega y_pos do player
     sta ParamYPos                  ; Armazena em ParamYPos
+    adc #16
+    sta ParamY2Pos
+
     CheckBButton:
         lda Buttons
         and #BUTTON_B
@@ -36,18 +44,22 @@
 
         MoveRight:
             inc ParamXPos
+            inc ParamX2Pos
             jsr CastSpell
 
         MoveLeft:
             dec ParamXPos
+            dec ParamX2Pos
             jsr CastSpell
 
         MoveDown:
             inc ParamYPos
+            inc ParamY2Pos
             jsr CastSpell
 
         MoveUp:
             dec ParamYPos
+            dec ParamY2Pos
             jsr CastSpell
 
     CheckRightButton:
@@ -56,11 +68,12 @@
             beq CheckLeftButton                                 ; If the right button is not pressed, we skip to test the left button
 
                 inc ParamXPos                                   ; Incrementa ParamXPos
+                inc ParamX2Pos 
 
                 jsr CheckCollisions
                 lda Collision                                        ; Compara o valor do acumulador A com 1
                 cmp #1
-                beq :+ 
+                beq CheckLeftButton
                 inc Players+Player::x_pos                       ; X++, which is only performed if right button is being pressed
                 lda #Side::RIGHT
                 sta Players+Player::side
@@ -70,11 +83,12 @@
             beq CheckDownButton                               ; If the left button is not pressed, we skip to test the down button
 
                 dec ParamXPos                  ; Incrementa ParamXPos
+                dec ParamX2Pos 
 
                 jsr CheckCollisions
                 lda Collision
                 cmp #1
-                beq :+ 
+                beq CheckDownButton
                 dec Players+Player::x_pos                     ; X--, which is only performed if left button is being pressed
                 lda #Side::LEFT
                 sta Players+Player::side
@@ -84,11 +98,13 @@
             beq CheckUpButton                                 ; If the down button is not pressed, we skip to test the up button
 
                 inc ParamYPos                  ; Incrementa ParamXPos
+                inc ParamY2Pos
+
 
                 jsr CheckCollisions
                 lda Collision
                 cmp #1
-                beq :+ 
+                beq CheckUpButton
                 inc Players+Player::y_pos                     ; Y++, which is only performed if down button is being pressed
                 lda #Side::DOWN
                 sta Players+Player::side
@@ -97,6 +113,8 @@
             and #BUTTON_UP                                    ; Perform a bitwise AND with the accumulator
             beq :+                                            ; If the up button is not pressed, we skip to the end of our button check
                 dec ParamYPos                                 ; Incrementa ParamXPos
+                dec ParamY2Pos
+
                 jsr CheckCollisions
                 lda Collision
                 cmp #1
@@ -332,7 +350,6 @@
 
     rts
 .endproc
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subroutine to loop all enemy actors checking for collision with missile
 ;; Params = ParamXPos, ParamYPos (are the X and Y position of the missile)
@@ -346,7 +363,6 @@
         cmp #GameObjectType::NULL
         beq NextEnemy                     ; If it's NOT NULL, bypass this enemy and move check the next one
 
-        ;; SETUP BOUNDING BOX
             lda blocks+Block::XPos,x
             sta ParamRectX1
             adc #16                             ; X2 = X1 + 16
@@ -374,47 +390,6 @@
     rts
 .endproc
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to check if a point is inside a bounding box.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc IsBoundingBoxColliding
-    ;; Checks for collision between two bounding boxes: Player and Block
-
-    ;; 1. The player's right side must not be to the left of the block
-    lda ParamXPos
-    adc #12           ;; PlayerRectX2
-    sbc ParamRectX1   ;; Subtracts block's X1
-    bcc NoCollision   ;; If result < 0, no collision
-
-    ;; 2. The player's left side must not be to the right of the block
-    lda ParamXPos
-    adc #2            ;; PlayerRectX1
-    sbc ParamRectX2   ;; Subtracts block's X2
-    bcs NoCollision   ;; If result >= 0, no collision
-
-    ;; 3. The player's bottom must not be above the block
-    lda ParamYPos
-    adc #16           ;; PlayerRectY2
-    sbc ParamRectY1   ;; Subtracts block's Y1
-    bcc NoCollision   ;; If result < 0, no collision
-
-    ;; 4. The player's top must not be below the block's bottom
-    lda ParamYPos
-    sbc ParamRectY2   ;; Subtracts block's Y2
-    bcs NoCollision   ;; If result >= 0, no collision
-
-    ;; If all checks passed, there is a collision!
-    lda #1
-    sta Collision
-    rts               ;; Exit function
-
-  NoCollision:
-    lda #0
-    sta Collision
-    rts
-.endproc
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subroutine to check for collisions between the player and the background.
@@ -436,7 +411,6 @@
 
 .proc CheckBackgroudCollision
     PUSH_REGS
-
     CheckA:
         lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
         sta BgPtr
@@ -542,42 +516,42 @@
             rts 
         :
     CheckD:
-    lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-    sta BgPtr
-    lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-    sta BgPtr+1
+        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
+        sta BgPtr
+        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
+        sta BgPtr+1
 
-    lda ParamXPos
-    clc 
-    adc #16
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX1
+        lda ParamXPos
+        clc 
+        adc #16
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX1
 
-    lda ParamYPos
-    clc 
-    adc #16
-    lsr 
-    lsr 
-    lsr 
-    sta ParamRectX2
-    
-    lda ParamRectX2
-    jsr MultiplyBy32YAndAddX
+        lda ParamYPos
+        clc 
+        adc #16
+        lsr 
+        lsr 
+        lsr 
+        sta ParamRectX2
+        
+        lda ParamRectX2
+        jsr MultiplyBy32YAndAddX
 
-    ldy ParamRectX2
-    lda (BgPtr), y
-    sta ParamData
+        ldy ParamRectX2
+        lda (BgPtr), y
+        sta ParamData
 
-    lda ParamData
-    cmp #$99      ; Compara A com $99
-    bcc :+
-        lda #1
-        sta Collision
-        PULL_REGS
-        rts 
-    :
+        lda ParamData
+        cmp #$99      ; Compara A com $99
+        bcc :+
+            lda #1
+            sta Collision
+            PULL_REGS
+            rts 
+        :
 
     PULL_REGS
     rts             ; Retorna

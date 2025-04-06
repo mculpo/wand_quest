@@ -80,10 +80,17 @@
             jmp NextBlock
         :
 
+        clc 
         lda blocks+Block::XPos,x
-        sta ParamRectX1
+        sta ParamXPos
+        adc #16
+        sta ParamX2Pos
+
+        clc 
         lda blocks+Block::YPos,x
-        sta ParamRectY1
+        sta ParamYPos
+        adc #16
+        sta ParamY2Pos
 
         tya 
         sta ParamCurrentNumActor
@@ -91,7 +98,9 @@
 
         lda blocks+Block::Side,x
         cmp #Side::NONE                   
-        beq NextBlock
+        bne :+ 
+            jmp NextBlock
+        :
 
         cmp #Side::UP
         beq MoveUp
@@ -109,56 +118,66 @@
 
     MoveUp:
         sec  
-        lda ParamRectY1
+        lda ParamYPos
         sbc blocks+Block::YVel,x
-        sta ParamRectY1
+        sta ParamYPos
+        clc 
+        adc #16
+        sta ParamY2Pos
 
         jsr BlockCheckCollisions
         lda Collision
         cmp #1
         beq HasCollision
-            lda ParamRectY1
+            lda ParamYPos
             sta blocks+Block::YPos,x
             jmp NextBlock
     MoveDown:
         clc 
-        lda ParamRectY1
+        lda ParamYPos
         adc blocks+Block::YVel,x
-        sta ParamRectY1
+        sta ParamYPos
+        adc #16
+        sta ParamY2Pos
 
         jsr BlockCheckCollisions
         lda Collision
         cmp #1
         beq HasCollision
-            lda ParamRectY1
+            lda ParamYPos
             sta blocks+Block::YPos,x
             jmp NextBlock
 
     MoveRight:
         clc 
-        lda ParamRectX1
+        lda ParamXPos
         adc blocks+Block::XVel,x
-        sta ParamRectX1
+        sta ParamXPos
+        adc #16
+        sta ParamX2Pos
 
         jsr BlockCheckCollisions
         lda Collision
         cmp #1
         beq HasCollision
-            lda ParamRectX1
+            lda ParamXPos
             sta blocks+Block::XPos,x
             jmp NextBlock
 
     MoveLeft:
         sec 
-        lda ParamRectX1
+        lda ParamXPos
         sbc blocks+Block::XVel,x
-        sta ParamRectX1
+        sta ParamXPos
+        clc 
+        adc #16
+        sta ParamX2Pos
 
         jsr BlockCheckCollisions
         lda Collision
         cmp #1
         beq HasCollision
-            lda ParamRectX1
+            lda ParamXPos
             sta blocks+Block::XPos,x
             jmp NextBlock
     
@@ -325,16 +344,39 @@
     ; :
 
     jsr CheckCollisionPerBlock
-    ; lda Collision
-    ; cmp #1
-    ; bne :+
-    ;     jmp FinishCollisionCheck
-    ; :
+    lda Collision
+    cmp #1
+    bne :+
+        jmp FinishCollisionCheck
+    :
+
+    jsr CheckCollisionPlayer
 
     FinishCollisionCheck:
 
     PULL_REGS
 
+    rts
+.endproc
+
+.proc CheckCollisionPlayer
+    tya 
+    pha 
+
+    sec 
+    lda Players+Player::x_pos
+    sta ParamRectX1
+    adc #16
+    sta ParamRectX2
+    lda Players+Player::y_pos
+    sta ParamRectY1
+    adc #16
+    sta ParamRectY2
+
+    jsr IsBoundingBoxColliding
+
+    pla 
+    tay 
     rts
 .endproc
 
@@ -359,12 +401,17 @@
         beq NextEnemy
 
         lda blocks+Block::XPos,x
+        sta ParamRectX1
+        adc #16
         sta ParamRectX2
 
         lda blocks+Block::YPos,x
+        sta ParamRectY1
+        adc #16
         sta ParamRectY2
 
-        jsr BlockIsBoundingBoxColliding
+
+        jsr IsBoundingBoxColliding
 
         lda Collision
         beq NextEnemy
@@ -383,45 +430,4 @@
     pla 
     tya 
     rts
-.endproc
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to check if a point is inside a bounding box.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc BlockIsBoundingBoxColliding
-
-    lda ParamRectX1
-    clc
-    adc #16         
-    cmp ParamRectX2 
-    bcc NoCollision
-
-    lda ParamRectX2
-    clc
-    adc #16         
-    cmp ParamRectX1 
-    bcc NoCollision
-
-    lda ParamRectY1
-    clc
-    adc #16         
-    cmp ParamRectY2
-    bcc NoCollision
-
-    lda ParamRectY2
-    clc
-    adc #16         
-    cmp ParamRectY1
-    bcc NoCollision
-
-    lda #1
-    sta Collision
-    rts
-
-    NoCollision:
-        lda #0
-        sta Collision
-        rts
 .endproc
