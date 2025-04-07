@@ -411,12 +411,8 @@
 .proc CheckBackgroudCollision
     PUSH_REGS
     CheckA:
-        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-        sta BgPtr
-        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-        sta BgPtr+1
-
         lda ParamXPos
+        lsr 
         lsr 
         lsr 
         lsr 
@@ -426,23 +422,21 @@
         lsr 
         lsr 
         lsr 
+        lsr 
         sta ParamRectX2
         jsr MultiplyBy32YAndAddX
 
-        lda (BgPtr), y
-        cmp #$99      ; Compara A com $99 se for maior tem colisão >
-        bcc CheckB
+        lda bgcollision, y
+        cmp #$01      ; Compara A com $99 se for maior tem colisão >
+        bne CheckB
             lda #1
             sta Collision
             PULL_REGS
             rts 
     CheckB:
-        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-        sta BgPtr
-        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-        sta BgPtr+1
 
         lda ParamX2Pos
+        lsr 
         lsr 
         lsr 
         lsr 
@@ -452,31 +446,31 @@
         lsr 
         lsr 
         lsr 
+        lsr 
         sta ParamRectX2
         
         lda ParamRectX2
         jsr MultiplyBy32YAndAddX
 
-        lda (BgPtr), y
-        cmp #$99      ; Compara A com $99
-        bcc CheckC
+        lda bgcollision, y
+        cmp #$01       ; Compara A com $99
+        bne CheckC
             lda #1
             sta Collision
             PULL_REGS
             rts 
     CheckC:
-        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-        sta BgPtr
-        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-        sta BgPtr+1
+        
 
         lda ParamXPos
         lsr 
         lsr 
         lsr 
+        lsr 
         sta ParamRectX1
 
         lda ParamY2Pos
+        lsr 
         lsr 
         lsr 
         lsr 
@@ -485,20 +479,17 @@
         lda ParamRectX2
         jsr MultiplyBy32YAndAddX
 
-        lda (BgPtr), y
-        cmp #$99      ; Compara A com $99
-        bcc CheckD
+        lda bgcollision, y
+        cmp #$01       ; Compara A com $99
+        bne CheckD
             lda #1
             sta Collision
             PULL_REGS
             rts 
     CheckD:
-        lda #<BackgroundData     ; Fetch the lo-byte of BackgroundData address
-        sta BgPtr
-        lda #>BackgroundData     ; Fetch the hi-byte of BackgroundData address
-        sta BgPtr+1
-
+            
         lda ParamX2Pos
+        lsr 
         lsr 
         lsr 
         lsr 
@@ -508,14 +499,15 @@
         lsr 
         lsr 
         lsr 
+        lsr 
         sta ParamRectX2
         
         lda ParamRectX2
         jsr MultiplyBy32YAndAddX
 
-        lda (BgPtr), y
-        cmp #$99      ; Compara A com $99
-        bcc :+ 
+        lda bgcollision, y
+        cmp #$01       ; Compara A com $99
+        bne :+ 
             lda #1
             sta Collision
             PULL_REGS
@@ -531,35 +523,45 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc MultiplyBy32YAndAddX
-    ldx #0
-    LoopMultGeneric:
-        asl                     ; Shift para multiplicar por 2 (5 vezes = x32)
-        bcc NoOverflow
-            tay                 ; Salva valor temporariamente em Y
-            clc
-            lda BgPtr+1
-            adc #1              ; Incrementa o byte alto do ponteiro
-            sta BgPtr+1
-            tya                 ; Recupera o valor original
-    NoOverflow:
-        inx
-        cpx #5
-        bne LoopMultGeneric
+    asl
+    asl
+    asl
+    asl
+    clc
+    adc ParamRectX1         ; Soma X ao resultado (TileX)
+    sta ParamRectX2         ; Guarda valor temporário
+    lda ParamRectX2
+    tay                     ; Resultado final em Y
+    rts
+    ; ldx #0
+    ; LoopMultGeneric:
+    ;     asl                     ; Shift para multiplicar por 2 (5 vezes = x32)
+    ;     bcc NoOverflow
+    ;         tay                 ; Salva valor temporariamente em Y
+    ;         clc
+    ;         lda BgPtr+1
+    ;         adc #1              ; Incrementa o byte alto do ponteiro
+    ;         sta BgPtr+1
+    ;         tya                 ; Recupera o valor original
+    ; NoOverflow:
+    ;     inx
+    ;     cpx #5
+    ;     bne LoopMultGeneric
 
-        clc
-        adc ParamRectX1         ; Soma X ao resultado (TileX)
-        sta ParamRectX2         ; Guarda valor temporário
-        bcc NoCarry
-            tay
-            clc
-            lda BgPtr+1
-            adc #1
-            sta BgPtr+1
-            tya
-    NoCarry:
-        lda ParamRectX2
-        tay                     ; Resultado final em Y
-        rts
+    ;     clc
+    ;     adc ParamRectX1         ; Soma X ao resultado (TileX)
+    ;     sta ParamRectX2         ; Guarda valor temporário
+    ;     bcc NoCarry
+    ;         tay
+    ;         clc
+    ;         lda BgPtr+1
+    ;         adc #1
+    ;         sta BgPtr+1
+    ;         tya
+    ; NoCarry:
+    ;     lda ParamRectX2
+    ;     tay                     ; Resultado final em Y
+    ;     rts
 .endproc
 
 

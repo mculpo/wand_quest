@@ -193,6 +193,7 @@ PaletteData:
 ; BackgroundData:
 ; .incbin "wq_nametable_0.nam"
 .include "nametable0.asm"
+.include "bgcollision.asm"
 
 ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; ;; Here goes the encoded music data that was exported by FamiStudio
