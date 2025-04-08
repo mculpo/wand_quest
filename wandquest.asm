@@ -38,6 +38,7 @@ FAMISTUDIO_DPCM_OFF           = $E000
 
 .include "src/audioengine.asm"
 .include "src/utils.asm"
+.include "src/bg_collision_map.asm"
 .include "src/blocks.asm"
 .include "src/player.asm"
 
@@ -65,7 +66,7 @@ Reset:
     jsr LoadBackground
     ;;jsr LoadEnemys
     jsr LoadPlayer
-    ;jsr LoadAllBlock
+    jsr LoadAllBlock
 
   InitVariables:
       lda #0
@@ -108,9 +109,9 @@ Reset:
     jsr RenderPlayer
     jsr RenderBlocks
 
-    WaitForVBlank:           ; We lock the execution of the game logic here
-        lda IsDrawComplete     ; Here we check and only perform a game loop call once NMI is done drawing
-        beq WaitForVBlank      ; Otherwise, we keep looping
+    WaitForVBlank:              ; We lock the execution of the game logic here
+        lda IsDrawComplete      ; Here we check and only perform a game loop call once NMI is done drawing
+        beq WaitForVBlank       ; Otherwise, we keep looping
 
         lda #0
         sta IsDrawComplete       ; Once we're done, we set the DrawComplete flag back to 0
@@ -127,18 +128,11 @@ NMI:
         inc Frame                                   ; Frame++
         inc Players+Player::t_anim                  ; Frame++
 
-        ;jsr ApplySpriteFlicker                      ; Aplica o flickering para alternar os sprites
-
+    
 
     OAMStartDMACopy:             ; DMA copy of OAM data from RAM to PPU
         lda #$02                 ; Every frame, we copy spite data starting at $02**
         sta PPU_OAM_DMA          ; The OAM-DMA copy starts when we write to $4014
-
-    ;;jsr UpdatePlayerPositionOAM
-
-        ;;;; ABAIXO AQUI COLOCAR A ATUALIZAÇÃO DAS OUTRAS SPRITES JÁ CARREGADAS
-        ;;;; OS PRIMEIROS PONTEIROS SÃO PARA O PLAYER 1 E PLAYER 2 ( AQUI TMB PRETENDO COLOCAR ARRAY PARA NÃO PRECISAR, SETAR DIRETAMENTE)
-        ;;;; OS DEMAIS SÃO PARA BLOCOS E INIMIGOS, QUE VÃO SER ARRAYS.
 
     RefreshRendering:
         lda #%10010000           ; Enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
@@ -160,23 +154,23 @@ NMI:
         lda Players+Player::t_anim
         cmp #30
         bne :+                                          ; Se  < 30, pula a atualização
-            inc Players+Player::c_anim             ; Incrementa currentAnim
+            inc Players+Player::c_anim                  ; Incrementa currentAnim
             lda #0
-            sta Players+Player::t_anim             ; Reseta 
+            sta Players+Player::t_anim                  ; Reseta 
             lda Players+Player::c_anim
             cmp #2                                      ; Se currentAnim > 1 (ou seja, 2 ou mais)
             bcc :+                                      ; Se for menor que 2, mantém
                 lda #0
-                sta Players+Player::c_anim         ; Reseta para 0 se passar de 1    
+                sta Players+Player::c_anim              ; Reseta para 0 se passar de 1    
     :
 
     SetDrawComplete:
         lda #1
-        sta IsDrawComplete       ; Set the DrawComplete flag to indicate we are done drawing to the PPU
+        sta IsDrawComplete                              ; Set the DrawComplete flag to indicate we are done drawing to the PPU
 
         PULL_REGS
 
-        rti                      ; Return from interrupt
+        rti                                             ; Return from interrupt
 
 
     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -245,18 +239,13 @@ SpriteData:
 ;; Sprite Block Data Attributes
 ;; Y , X
 SpriteBlockData:
-.byte $64, $64  
-.byte $64, $18  
-.byte $18, $36  
-.byte $18, $54  
-.byte $18, $90  
+.byte $64, $B5  
+.byte $64, $35
 .byte $00
 
-
 .segment "CHARS1"
-.incbin "wand_quest_spr.chr"
-.incbin "wand_quest_bg.chr"    ; This is the 1nd bank of CHR-ROM tiles
-
+.incbin "wand_quest_spr.chr"      ; 4kb
+.incbin "wand_quest_bg.chr"       ; 4kb
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Vectors with the addresses of the handlers that we always add at $FFFA

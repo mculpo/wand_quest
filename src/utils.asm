@@ -41,46 +41,6 @@
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to check if a point is inside a bounding box.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Using 1º Actor ParamXPos, ParamX2Pos, ParamYPos, ParamY2Pos ()
-;; Using 2º Actor ParamRectX1, ParamRectX2, ParamRectY1, ParamRectY2 ()
-.proc IsBoundingBoxColliding
-    ;; Checks for collision between two bounding boxes: Player and Block
-
-    ;; 1. A.x2 < B.x1 → no collision
-    lda ParamX2Pos
-    cmp ParamRectX1
-    bcc NoCollision
-
-    ;; 2. B.x2 < A.x1 → no collision
-    lda ParamRectX2
-    cmp ParamXPos
-    bcc NoCollision
-
-    ;; 3. A.y2 < B.y1 → no collision
-    lda ParamY2Pos
-    cmp ParamRectY1
-    bcc NoCollision
-
-    ;; 4. B.y2 < A.y1 → no collision
-    lda ParamRectY2
-    cmp ParamYPos
-    bcc NoCollision
-
-    ;; Collision detected
-    lda #1
-    sta Collision
-    rts
-
-  NoCollision:
-    lda #0
-    sta Collision
-    rts
-.endproc
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subroutine to load all 32 color palette values from ROM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc LoadPalette

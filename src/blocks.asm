@@ -1,5 +1,14 @@
 .segment "CODE"
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to load all block sprites.
+;; 
+;; This routine iterates through the SpriteBlockData table and loads blocks 
+;; based on a pair of (Y, X) positions. For each valid pair found, it calls 
+;; AddNewBlock to register a new block in the system.
+;;
+;; It uses the X register to traverse the table, and stops when a zero is found.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc LoadAllBlock
     ldx #0
     LoopSprite:
@@ -18,6 +27,15 @@
     rts
 .endproc
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to add a new block.
+;;
+;; This routine finds the first available slot in the block array (i.e., where 
+;; the type is NULL) and fills in the block data using global parameters for 
+;; position (X, Y). If the array is full, it exits without making changes.
+;;
+;; Initializes each block with default screen, side, and velocity values.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc AddNewBlock
     PUSH_REGS
     ldx #0
@@ -46,7 +64,7 @@
         sta blocks+Block::Screen,x      ; Every actor starts at Screen 0 
         sta blocks+Block::Side, x
 
-        lda #3
+        lda #1
         sta blocks+Block::XVel,x        ; Every actor starts at Screen 0
         sta blocks+Block::YVel,x        ; Every actor starts at Screen 0
     EndRoutine:
@@ -243,7 +261,13 @@
     rts
 .endproc
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to render a block into the OAM (Object Attribute Memory).
+;;
+;; This routine renders a 16x16 block using four 8x8 sprites (Side1 to Side4).
+;; It places each sprite in the appropriate position using ParamXPos and 
+;; ParamYPos, and updates the OAM pointer accordingly.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc RenderOAMBlock
     ldy PrevOAMCount
 
@@ -252,11 +276,11 @@
         sta (SprPtr), y
         iny
 
-        lda #$04
+        lda #$06
         sta (SprPtr), y
         iny
 
-        lda #%00000010
+        lda #%00000000
         sta (SprPtr), y
         iny
 
@@ -269,11 +293,11 @@
         sta (SprPtr), y
         iny
 
-        lda #$04
+        lda #$07
         sta (SprPtr), y
         iny
 
-        lda #%01000010
+        lda #%00000000
         sta (SprPtr), y
         iny
 
@@ -290,11 +314,11 @@
         sta (SprPtr), y
         iny
 
-        lda #$04
+        lda #$08
         sta (SprPtr), y
         iny
 
-        lda #%10000010
+        lda #%01000000
         sta (SprPtr), y
         iny
 
@@ -309,11 +333,11 @@
     sta (SprPtr), y
     iny
 
-    lda #$04
+    lda #$08
     sta (SprPtr), y
     iny
 
-    lda #%11000010
+    lda #%00000000
     sta (SprPtr), y
     iny
 
@@ -329,21 +353,30 @@
     rts
 .endproc
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to check block collisions.
+;;
+;; This routine checks for collisions between the player and blocks, as well 
+;; as with the background. It sets the Collision flag to 1 if a collision is 
+;; detected. The check is performed in the following order:
+;;   1. Per-block collisions
+;;   2. Background collisions
+;;   3. Collision with the player
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc BlockCheckCollisions
     PUSH_REGS
 
     ldx #0
-    stx Collision                      ; Collision = 0
-
-    ; jsr CheckBackgroudCollision
-    ; lda Collision
-    ; cmp #1
-    ; bne :+
-    ;     jmp FinishCollisionCheck
-    ; :
+    stx Collision
 
     jsr CheckCollisionPerBlock
+    lda Collision
+    cmp #1
+    bne :+
+        jmp FinishCollisionCheck
+    :
+
+    jsr CheckBackgroudCollision
     lda Collision
     cmp #1
     bne :+
@@ -359,6 +392,13 @@
     rts
 .endproc
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to check collision between the player and the blocks.
+;;
+;; This routine sets up a bounding box around the player and calls the 
+;; IsBoundingBoxColliding function to test collision. If a collision occurs, 
+;; the Collision flag will be set.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc CheckCollisionPlayer
     tya 
     pha 
