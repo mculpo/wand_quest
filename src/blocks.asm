@@ -63,8 +63,9 @@
         lda #0
         sta blocks+Block::Screen,x      ; Every actor starts at Screen 0 
         sta blocks+Block::Side, x
+        sta blocks+Block::SprAttr, x
 
-        lda #1
+        lda #3
         sta blocks+Block::XVel,x        ; Every actor starts at Screen 0
         sta blocks+Block::YVel,x        ; Every actor starts at Screen 0
     EndRoutine:
@@ -130,78 +131,153 @@
         beq MoveRight
 
         cmp #Side::LEFT
-        beq MoveLeft
+        bne :+ 
+            jmp MoveLeft
+        : 
 
         jmp NextBlock
 
     MoveUp:
-        sec  
-        lda ParamYPos
-        sbc blocks+Block::YVel,x
-        sta ParamYPos
-        clc 
-        adc #16
-        sta ParamY2Pos
+        PUSH_REGS
+        lda blocks+Block::YVel,x
+        tay 
+        LoopMoveUp:
+            sec
+            lda ParamYPos
+            sbc #1
+            sta ParamYPos
+            clc
+            adc #16
+            sta ParamY2Pos
 
-        jsr BlockCheckCollisions
-        lda Collision
-        cmp #1
-        beq HasCollision
+            jsr BlockCheckCollisions
+            lda Collision
+            cmp #1
+            beq HasMoveUpCollision
+
             lda ParamYPos
             sta blocks+Block::YPos,x
+
+            dey
+            bne LoopMoveUp
+
+            PULL_REGS
             jmp NextBlock
+
+        HasMoveUpCollision:
+            PULL_REGS
+            jmp HasCollision
     MoveDown:
-        clc 
-        lda ParamYPos
-        adc blocks+Block::YVel,x
-        sta ParamYPos
-        adc #16
-        sta ParamY2Pos
+        PUSH_REGS
+        lda blocks+Block::YVel, x 
+        tay 
+        LoopMoveDown:
+            clc 
+            lda ParamYPos
+            adc #1
+            sta ParamYPos
+            adc #16
+            sta ParamY2Pos
 
-        jsr BlockCheckCollisions
-        lda Collision
-        cmp #1
-        beq HasCollision
+            jsr BlockCheckCollisions
+            lda Collision
+            cmp #1
+            beq HasMoveDownCollision
+
             lda ParamYPos
             sta blocks+Block::YPos,x
+
+            dey
+            bne LoopMoveDown
+
+            PULL_REGS
             jmp NextBlock
+
+        HasMoveDownCollision:
+            PULL_REGS
+            jmp HasCollision
 
     MoveRight:
-        clc 
-        lda ParamXPos
-        adc blocks+Block::XVel,x
-        sta ParamXPos
-        adc #16
-        sta ParamX2Pos
+        PUSH_REGS
+        lda blocks+Block::XVel,x 
+        tay 
+        LoopMoveRight:
+            clc 
+            lda ParamXPos
+            adc #1
+            sta ParamXPos
+            adc #16
+            sta ParamX2Pos
 
-        jsr BlockCheckCollisions
-        lda Collision
-        cmp #1
-        beq HasCollision
+            jsr BlockCheckCollisions
+            lda Collision
+            cmp #1
+            beq HasMoveRightCollision
+
             lda ParamXPos
             sta blocks+Block::XPos,x
+
+            dey
+            bne LoopMoveRight
+
+            PULL_REGS
             jmp NextBlock
+
+        HasMoveRightCollision:
+            PULL_REGS
+            jmp HasCollision
 
     MoveLeft:
-        sec 
-        lda ParamXPos
-        sbc blocks+Block::XVel,x
-        sta ParamXPos
-        clc 
-        adc #16
-        sta ParamX2Pos
+        PUSH_REGS
+        lda blocks+Block::XVel,x 
+        tay 
+        LoopMoveLeft:
+            sec 
+            lda ParamXPos
+            sbc #1
+            sta ParamXPos
+            clc 
+            adc #16
+            sta ParamX2Pos
 
-        jsr BlockCheckCollisions
-        lda Collision
-        cmp #1
-        beq HasCollision
+            jsr BlockCheckCollisions
+            lda Collision
+            cmp #1
+            beq HasMoveLeftCollision
+
             lda ParamXPos
             sta blocks+Block::XPos,x
+
+            dey
+            bne LoopMoveLeft
+
+            PULL_REGS
             jmp NextBlock
-    
+
+        HasMoveLeftCollision:
+            PULL_REGS
+            jmp HasCollision
+
     HasCollision:
-        lda #Side::NONE
-        sta blocks+Block::Side,x
+        ;; verify if block stoped into the block collision #2
+        
+        
+        jsr CheckBackgroundSlotCollision
+        lda Collision
+        cmp #1
+        bne NoCollision
+
+            lda blocks+Block::SprAttr, x 
+            sta ParamAttrOut
+            lda #2
+            sta ParamAttrIn
+            jsr SetSpritePalette
+            lda ParamAttrOut
+            sta blocks+Block::SprAttr, x 
+
+        NoCollision:
+            lda #Side::NONE
+            sta blocks+Block::Side,x
 
     NextBlock:
         iny 
@@ -247,6 +323,8 @@
         sta ParamXPos
         lda blocks+Block::YPos, x 
         sta ParamYPos
+        lda blocks+Block::SprAttr, x 
+        sta ParamAttrOut
 
         jsr RenderOAMBlock
 
@@ -280,7 +358,7 @@
         sta (SprPtr), y
         iny
 
-        lda #%00000000
+        lda ParamAttrOut
         sta (SprPtr), y
         iny
 
@@ -297,7 +375,7 @@
         sta (SprPtr), y
         iny
 
-        lda #%00000000
+        lda ParamAttrOut
         sta (SprPtr), y
         iny
 
@@ -318,7 +396,11 @@
         sta (SprPtr), y
         iny
 
-        lda #%01000000
+        lda #1
+        sta ParamAttrIn
+        jsr SetSpriteFlipH
+
+        lda ParamAttrOut
         sta (SprPtr), y
         iny
 
@@ -326,29 +408,33 @@
         sta (SprPtr), y
         iny
 
-    Side4:
-    lda ParamYPos
-    clc
-    adc #8
-    sta (SprPtr), y
-    iny
+        Side4:
+        lda ParamYPos
+        clc
+        adc #8
+        sta (SprPtr), y
+        iny
 
-    lda #$08
-    sta (SprPtr), y
-    iny
+        lda #$08
+        sta (SprPtr), y
+        iny
 
-    lda #%00000000
-    sta (SprPtr), y
-    iny
+        lda #0
+        sta ParamAttrIn
+        jsr SetSpriteFlipH
 
-    lda ParamXPos
-    clc
-    adc #8
-    sta (SprPtr), y
-    iny
+        lda ParamAttrOut
+        sta (SprPtr), y
+        iny
 
-    tya
-    sta PrevOAMCount
+        lda ParamXPos
+        clc
+        adc #8
+        sta (SprPtr), y
+        iny
+
+        tya
+        sta PrevOAMCount
 
     rts
 .endproc
@@ -376,6 +462,8 @@
         jmp FinishCollisionCheck
     :
 
+    lda #$01
+    sta ParamTile
     jsr CheckBackgroudCollision
     lda Collision
     cmp #1
@@ -390,6 +478,46 @@
     PULL_REGS
 
     rts
+.endproc
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Checks collision between the object and the background collision map.
+;; It tests four corners of the object's bounding box:
+;; (X, Y), (X2, Y), (X, Y2), (X2, Y2)
+;; Each corner is passed through VerifySideCollision to check if it hits
+;; a tile marked as solid (value #$01) in the bgcollision map.
+;;
+;; Coordinates are passed via:
+;;   - ParamXPos / ParamX2Pos (horizontal bounds)
+;;   - ParamYPos / ParamY2Pos (vertical bounds)
+;;
+;; If any corner has collision, it sets Collision = 1 and exits early.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc CheckBackgroundSlotCollision
+    PUSH_REGS
+    lda #0
+    sta Collision
+
+    clc
+    lda ParamXPos
+    adc #8
+    sta ParamRectX1
+    clc
+    lda ParamYPos
+    adc #8
+    sta ParamRectX2
+
+    nop
+        nop
+        nop
+        nop
+
+    lda #$02
+    sta ParamTile
+    jsr VerifySideCollision
+    PULL_REGS
+    rts 
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

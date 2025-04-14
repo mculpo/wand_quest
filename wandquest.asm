@@ -186,7 +186,7 @@ PaletteData:
 .incbin "palettes_1.dat"
 ; BackgroundData:
 ; .incbin "wq_nametable_0.nam"
-.include "nametable0.asm"
+.include "BackgroundData.asm"
 .include "bgcollision.asm"
 
 ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -239,8 +239,10 @@ SpriteData:
 ;; Sprite Block Data Attributes
 ;; Y , X
 SpriteBlockData:
-.byte $64, $B5  
-.byte $64, $35
+.byte $6F, $B5  
+.byte $6F, $35
+.byte $BF, $90
+.byte $90, $90
 .byte $00
 
 .segment "CHARS1"

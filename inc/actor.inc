@@ -34,13 +34,14 @@
 ;; Struct to hold the data for one actor
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .struct Block
-    Type   .byte
-    XPos   .byte
-    YPos   .byte
-    XVel   .byte
-    YVel   .byte
-    Screen .byte
-    Side   .byte
+    Type        .byte
+    XPos        .byte
+    YPos        .byte
+    XVel        .byte
+    YVel        .byte
+    Screen      .byte
+    SprAttr     .byte
+    Side        .byte
 .endstruct
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

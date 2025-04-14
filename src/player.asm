@@ -14,6 +14,7 @@
     clc 
     lda Players+Player::x_pos
     sta ParamXPos
+    lda Players+Player::x_pos
     adc #16
     sta ParamX2Pos
 
@@ -30,7 +31,7 @@ CheckBButton:
 
     lda PrevButtons       
     cmp Buttons
-    beq CheckRightButton  
+    beq CheckRightButton
 
     lda Players+Player::side
     cmp #Side::RIGHT
@@ -68,7 +69,7 @@ CheckRightButton:
     beq CheckLeftButton
 
     inc ParamXPos
-    inc ParamX2Pos 
+    inc ParamX2Pos
     jsr CheckCollisions
     lda Collision
     cmp #1
@@ -290,14 +291,18 @@ CheckUpButton:
         cmp #GameObjectType::NULL
         beq NextEnemy
 
+    
         lda blocks+Block::XPos,x
         sta ParamRectX1
-        adc #16
+        clc 
+        adc #21
         sta ParamRectX2
 
+        sec 
         lda blocks+Block::YPos,x
         sta ParamRectY1
-        adc #16
+        clc 
+        adc #21
         sta ParamRectY2
 
         jsr IsBoundingBoxColliding
@@ -333,6 +338,8 @@ CheckUpButton:
         ldx #0
         stx Collision
 
+        lda #$01
+        sta ParamTile
         jsr CheckBackgroudCollision
         lda Collision
         cmp #1

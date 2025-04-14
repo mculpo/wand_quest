@@ -84,3 +84,109 @@
 
     rts                      ; Return from subroutine
 .endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to set the sprite color palette (bits 0-1)
+;; Input:  ParamAttrIn  = 0 a 3 (seleciona qual das 4 paletas usar)
+;; Output: ParamAttrOut = attribute byte atualizado
+;;
+;; Uso:
+;;   lda #2                ; Escolhe a paleta 2
+;;   sta ParamAttrIn
+;;   jsr SetSpritePalette
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc SetSpritePalette
+  lda ParamAttrIn
+  and #%00000011
+  sta ParamAttrIn
+
+  lda ParamAttrOut
+  and #%11111100
+  ora ParamAttrIn
+  sta ParamAttrOut
+  rts 
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to set the sprite priority (bit 5)
+;; Input:  ParamAttrIn  = 0 (na frente do fundo) ou 1 (atrás do fundo)
+;; Output: ParamAttrOut = attribute byte atualizado
+;;
+;; Uso:
+;;   lda #1                ; Coloca sprite atrás do background
+;;   sta ParamAttrIn
+;;   jsr SetSpritePriority
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc SetSpritePriority
+    lda ParamAttrIn
+    and #%00000001
+    asl
+    asl
+    asl
+    asl
+    asl
+    sta ParamAttrIn
+
+    lda ParamAttrOut
+    and #%11011111
+    ora ParamAttrIn
+    sta ParamAttrOut
+    rts 
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to flip sprite horizontally (bit 6)
+;; Input:  ParamAttrIn  = 0 (normal) ou 1 (espelhado horizontalmente)
+;; Output: ParamAttrOut = attribute byte atualizado
+;;
+;; Uso:
+;;   lda #1                ; Espelha horizontalmente
+;;   sta ParamAttrIn
+;;   jsr SetSpriteFlipH
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc SetSpriteFlipH
+    lda ParamAttrIn
+    and #%00000001
+    asl
+    asl
+    asl
+    asl
+    asl
+    asl
+    sta ParamAttrIn
+
+    lda ParamAttrOut
+    and #%10111111
+    ora ParamAttrIn
+    sta ParamAttrOut
+    rts 
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to flip sprite vertically (bit 7)
+;; Input:  ParamAttrIn  = 0 (normal) ou 1 (espelhado verticalmente)
+;; Output: ParamAttrOut = attribute byte atualizado
+;;
+;; Uso:
+;;   lda #1                ; Espelha verticalmente
+;;   sta ParamAttrIn
+;;   jsr SetSpriteFlipV
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc SetSpriteFlipV
+    lda ParamAttrIn
+    and #%00000001
+    asl 
+    asl 
+    asl 
+    asl 
+    asl 
+    asl 
+    asl 
+    sta ParamAttrIn
+
+    lda ParamAttrOut
+    and #%01111111
+    ora ParamAttrIn
+    sta ParamAttrOut
+    rts 
+.endproc

@@ -22,6 +22,11 @@ ParamRectX2:                            .res 1
 ParamRectY1:                            .res 1
 ParamRectY2:                            .res 1
 
+ParamTile:                              .res 1
+
+ParamAttrIn:                            .res 1
+ParamAttrOut:                           .res 1
+
 ParamCurrentNumActor:                   .res 1
 ParamScreen:                            .res 1
 

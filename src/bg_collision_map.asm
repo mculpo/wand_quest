@@ -21,6 +21,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "CODE"
 
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Checks collision between the object and the background collision map.
 ;; It tests four corners of the object's bounding box:
@@ -44,8 +46,8 @@
 
     jsr VerifySideCollision
     lda Collision
-    cmp #$01      
-    bne :+ 
+    cmp ParamTile
+       bne :+ 
         PULL_REGS
         rts 
     :
@@ -57,7 +59,7 @@
 
     jsr VerifySideCollision
     lda Collision
-    cmp #$01
+    cmp ParamTile
     bne :+ 
         PULL_REGS
         rts 
@@ -70,7 +72,7 @@
 
     jsr VerifySideCollision
     lda Collision
-    cmp #$01
+    cmp ParamTile
     bne :+ 
         PULL_REGS
         rts 
@@ -83,7 +85,7 @@
 
     jsr VerifySideCollision
     lda Collision
-    cmp #$01
+    cmp ParamTile
     bne :+ 
         PULL_REGS
         rts 
@@ -114,8 +116,9 @@
         sta ParamRectX2
         jsr MultiplyBy16YAndAddX
 
+        lda ParamTile
         lda bgcollision, y
-        cmp #$01 
+        cmp ParamTile
         bne :+ 
             lda #1
             sta Collision
@@ -147,29 +150,69 @@
 ;; Using 1º Actor ParamXPos, ParamX2Pos, ParamYPos, ParamY2Pos ()
 ;; Using 2º Actor ParamRectX1, ParamRectX2, ParamRectY1, ParamRectY2 ()
 .proc IsBoundingBoxColliding
-    ;; Checks for collision between two bounding boxes: Player and Block
+    ;; Verifica se há separação (nenhuma colisão)
 
-    ;; 1. A.x2 < B.x1 → no collision
+    ;; A.x2 < B.x1 ?
     lda ParamX2Pos
     cmp ParamRectX1
     bcc NoCollision
 
-    ;; 2. B.x2 < A.x1 → no collision
-    lda ParamRectX2
-    cmp ParamXPos
-    bcc NoCollision
+    ;; A.x1 > B.x2 ?
+    lda ParamXPos
+    cmp ParamRectX2
+    bcs NoCollision
 
-    ;; 3. A.y2 < B.y1 → no collision
+    ;; A.y2 < B.y1 ?
     lda ParamY2Pos
     cmp ParamRectY1
     bcc NoCollision
 
-    ;; 4. B.y2 < A.y1 → no collision
-    lda ParamRectY2
+    ;; A.y1 > B.y2 ?
+    lda ParamYPos
+    cmp ParamRectY2
+    bcs NoCollision
+
+    ;; Se chegou aqui, há colisão
+    lda #1
+    sta Collision
+    rts
+
+NoCollision:
+    lda #0
+    sta Collision
+    rts
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subroutine to check if a point is inside a bounding box.
+;; Input:
+;;   ParamRectX1, ParamRectY1 = point to check
+;;   ParamXPos, ParamX2Pos    = bounding box X limits (left to right)
+;;   ParamYPos, ParamY2Pos    = bounding box Y limits (top to bottom)
+;; Output:
+;;   Collision = 1 if the point is inside the bounding box
+;;               0 if the point is outside
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc IsPointerBoxColliding
+    ;; If point.x < box.x1 → outside
+    lda ParamRectX1
+    cmp ParamXPos
+    bcc NoCollision
+
+    ;; If point.x > box.x2 → outside
+    cmp ParamX2Pos
+    bcs NoCollision
+
+    ;; If point.y < box.y1 → outside
+    lda ParamRectY1
     cmp ParamYPos
     bcc NoCollision
 
-    ;; Collision detected
+    ;; If point.y > box.y2 → outside
+    cmp ParamY2Pos
+    bcs NoCollision
+
+    ;; The point is inside the box
     lda #1
     sta Collision
     rts

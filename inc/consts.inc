@@ -55,6 +55,8 @@ SIDE_DOWN  = %01  ; 1 em binário
 SIDE_RIGHT = %10  ; 2 em binário
 SIDE_LEFT  = %11  ; 3 em binário
 
+PLAYER_OFFSET_X = 4
+PLAYER_OFFSET_Y = 4
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Maximum number of actors that we can have
