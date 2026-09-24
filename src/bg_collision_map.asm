@@ -1,224 +1,176 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Collision System for Background Map
-;; 
-;; This module provides routines to detect collision between an object
-;; and the background collision map (bgcollision), based on a tilemap layout.
+;; Sistema de colisão
 ;;
-;; === Requirements ===
-;; The actor (object) must provide the positions of its bounding box corners:
-;; 
-;;   - ParamXPos / ParamX2Pos : horizontal bounds (left/right)
-;;   - ParamYPos / ParamY2Pos : vertical bounds (top/bottom)
+;; Todas as rotinas "Is*" e "Check*" devolvem o resultado no CARRY:
+;;   C = 1  -> houve colisão / condição verdadeira
+;;   C = 0  -> não houve
+;; Quem chama testa com "bcs Colidiu" ou "bcc Livre", sem variável extra.
 ;;
-;; These positions must be in **pixel units**, and the collision system
-;; will internally convert them to tile coordinates (divided by 16).
+;; Isso funciona bem no 6502 porque "cmp" já deixa o carry pronto:
+;; depois de "lda A / cmp B", C = 1 se A >= B e C = 0 se A < B.
 ;;
-;; The collision detection will mark:
-;;   Collision = 1   → if any corner overlaps a solid tile (#$01)
-;;   Collision = 0   → otherwise
-;;
-;; Use `CheckBackgroudCollision` to test the four corners of the object.
+;; === Mapa de colisão da fase (LevelMap) ===
+;; É uma grade de 16x16 metatiles (cada um com 16x16 pixels) na RAM, um byte
+;; por metatile, lida linha por linha, montada pelo LoadLevel (src/level.asm).
+;; A tela tem 15 linhas; a 16ª é sempre parede, então um Y entre 240 e 255
+;; também é tratado como parede. Os valores estão em consts.inc:
+;; TILE_EMPTY, TILE_SOLID e TILE_SLOT.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "CODE"
 
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Checks collision between the object and the background collision map.
-;; It tests four corners of the object's bounding box:
-;; (X, Y), (X2, Y), (X, Y2), (X2, Y2)
-;; Each corner is passed through VerifySideCollision to check if it hits
-;; a tile marked as solid (value #$01) in the bgcollision map.
+;; Lê o valor do mapa de colisão no ponto (PointX, PointY), em pixels.
 ;;
-;; Coordinates are passed via:
-;;   - ParamXPos / ParamX2Pos (horizontal bounds)
-;;   - ParamYPos / ParamY2Pos (vertical bounds)
+;; O índice no mapa é linha * 16 + coluna, onde linha = Y / 16 e
+;; coluna = X / 16. Como (Y / 16) * 16 é a mesma coisa que zerar os
+;; 4 bits baixos de Y, o índice sai com um "and" e um "ora":
+;;   índice = (Y & %11110000) | (X >> 4)
 ;;
-;; If any corner has collision, it sets Collision = 1 and exits early.
+;; Entrada: PointX, PointY
+;; Saída:   A = valor do tile (TILE_*)
+;; Destrói: A, Y, Temp
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc CheckBackgroudCollision
-    PUSH_REGS
-
-    lda ParamXPos
-    sta ParamRectX1
-    lda ParamYPos
-    sta ParamRectX2
-
-    jsr VerifySideCollision
-    lda Collision
-    cmp ParamTile
-       bne :+ 
-        PULL_REGS
-        rts 
-    :
-
-    lda ParamX2Pos
-    sta ParamRectX1
-    lda ParamYPos
-    sta ParamRectX2
-
-    jsr VerifySideCollision
-    lda Collision
-    cmp ParamTile
-    bne :+ 
-        PULL_REGS
-        rts 
-    :
-
-    lda ParamXPos
-    sta ParamRectX1
-    lda ParamY2Pos
-    sta ParamRectX2
-
-    jsr VerifySideCollision
-    lda Collision
-    cmp ParamTile
-    bne :+ 
-        PULL_REGS
-        rts 
-    :
-
-    lda ParamX2Pos
-    sta ParamRectX1
-    lda ParamY2Pos
-    sta ParamRectX2
-
-    jsr VerifySideCollision
-    lda Collision
-    cmp ParamTile
-    bne :+ 
-        PULL_REGS
-        rts 
-    :
-    PULL_REGS
-    rts 
+.proc GetMapTile
+    lda PointY
+    and #%11110000              ; A = linha * 16
+    sta Temp
+    lda PointX
+    lsr
+    lsr
+    lsr
+    lsr                         ; A = coluna (X / 16)
+    ora Temp                    ; A = linha * 16 + coluna
+    tay
+    lda LevelMap,y              ; A = valor do tile nessa posição
+    rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Converts object pixel coordinates into tile coordinates (X and Y),
-;; then calculates the tile index in the collision map.
-;; If the value at that index in bgcollision is #$01,
-;; it sets Collision = 1 (meaning a solid tile was hit).
+;; O ponto (PointX, PointY) está sobre um tile do tipo ParamTile?
+;;
+;; Entrada: PointX, PointY, ParamTile
+;; Saída:   C = 1 se o tile for igual a ParamTile, C = 0 se não for
+;; Destrói: A, Y, Temp
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc VerifySideCollision
-        lda ParamRectX1
-        lsr 
-        lsr 
-        lsr 
-        lsr 
-        sta ParamRectX1
-
-        lda ParamRectX2
-        lsr 
-        lsr 
-        lsr 
-        lsr 
-        sta ParamRectX2
-        jsr MultiplyBy16YAndAddX
-
-        lda ParamTile
-        lda bgcollision, y
-        cmp ParamTile
-        bne :+ 
-            lda #1
-            sta Collision
-    :
-    rts 
+.proc IsPointOnTile
+    jsr GetMapTile
+    cmp ParamTile               ; Se for igual, o cmp já deixa C = 1
+    beq Done
+    clc                         ; Diferente: garante C = 0 (o cmp pode ter deixado C = 1)
+Done:
+    rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Calculates the tile index: (Y * 16 + X), since the map is 16 tiles wide.
-;; The index is stored in Y for accessing the bgcollision array.
+;; Algum dos 4 cantos da hitbox (BoxX1..BoxX2, BoxY1..BoxY2) está sobre um
+;; tile do tipo ParamTile?
+;;
+;; Testar só os cantos é suficiente porque os objetos têm o mesmo tamanho
+;; dos metatiles do mapa (16x16): não existe tile que caiba "no meio" deles.
+;; Os cantos são visitados em volta da caixa, assim cada passo só troca
+;; uma coordenada do ponto.
+;;
+;; Entrada: BoxX1, BoxX2, BoxY1, BoxY2, ParamTile
+;; Saída:   C = 1 se algum canto está sobre ParamTile
+;; Destrói: A, Y, Temp, PointX, PointY
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc MultiplyBy16YAndAddX
-    asl
-    asl
-    asl
-    asl
+.proc CheckBoxOnTile
+    lda BoxX1
+    sta PointX
+    lda BoxY1
+    sta PointY
+    jsr IsPointOnTile           ; Canto superior esquerdo
+    bcs Done
+
+    lda BoxX2
+    sta PointX
+    jsr IsPointOnTile           ; Canto superior direito
+    bcs Done
+
+    lda BoxY2
+    sta PointY
+    jsr IsPointOnTile           ; Canto inferior direito
+    bcs Done
+
+    lda BoxX1
+    sta PointX
+    jsr IsPointOnTile           ; Canto inferior esquerdo
+Done:
+    rts
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Calcula BoxX2 e BoxY2 a partir de BoxX1 e BoxY1 (objeto de 16x16).
+;;
+;; Entrada: BoxX1, BoxY1
+;; Saída:   BoxX2 = BoxX1 + HITBOX_SIZE, BoxY2 = BoxY1 + HITBOX_SIZE
+;; Destrói: A
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc SetBoxSize
+    lda BoxX1
     clc
-    adc ParamRectX1
-    sta ParamRectX2
-    lda ParamRectX2
-    tay                     
+    adc #HITBOX_SIZE
+    sta BoxX2
+    lda BoxY1
+    clc
+    adc #HITBOX_SIZE
+    sta BoxY2
     rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to check if a point is inside a bounding box.
+;; Teste de colisão entre duas caixas (AABB), com limites inclusivos.
+;;
+;; As caixas NÃO se tocam se uma estiver totalmente de um lado da outra.
+;; Cada "bcc" sai com C = 0 (sem colisão). Se passar pelos quatro testes,
+;; o último cmp deixa C = 1 exatamente quando há sobreposição.
+;;
+;; Entrada: BoxX1..BoxY2 (caixa A) e RectX1..RectY2 (caixa B)
+;; Saída:   C = 1 se as caixas se sobrepõem
+;; Destrói: A (preserva X e Y)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Using 1º Actor ParamXPos, ParamX2Pos, ParamYPos, ParamY2Pos ()
-;; Using 2º Actor ParamRectX1, ParamRectX2, ParamRectY1, ParamRectY2 ()
-.proc IsBoundingBoxColliding
-    ;; Verifica se há separação (nenhuma colisão)
+.proc IsBoxColliding
+    lda BoxX2                   ; A.x2 < B.x1 ?  (A está à esquerda de B)
+    cmp RectX1
+    bcc Done
 
-    ;; A.x2 < B.x1 ?
-    lda ParamX2Pos
-    cmp ParamRectX1
-    bcc NoCollision
+    lda RectX2                  ; B.x2 < A.x1 ?  (A está à direita de B)
+    cmp BoxX1
+    bcc Done
 
-    ;; A.x1 > B.x2 ?
-    lda ParamXPos
-    cmp ParamRectX2
-    bcs NoCollision
+    lda BoxY2                   ; A.y2 < B.y1 ?  (A está acima de B)
+    cmp RectY1
+    bcc Done
 
-    ;; A.y2 < B.y1 ?
-    lda ParamY2Pos
-    cmp ParamRectY1
-    bcc NoCollision
-
-    ;; A.y1 > B.y2 ?
-    lda ParamYPos
-    cmp ParamRectY2
-    bcs NoCollision
-
-    ;; Se chegou aqui, há colisão
-    lda #1
-    sta Collision
-    rts
-
-NoCollision:
-    lda #0
-    sta Collision
+    lda RectY2                  ; B.y2 < A.y1 ?  (A está abaixo de B)
+    cmp BoxY1                   ; C = 1 aqui significa que se sobrepõem
+Done:
     rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to check if a point is inside a bounding box.
-;; Input:
-;;   ParamRectX1, ParamRectY1 = point to check
-;;   ParamXPos, ParamX2Pos    = bounding box X limits (left to right)
-;;   ParamYPos, ParamY2Pos    = bounding box Y limits (top to bottom)
-;; Output:
-;;   Collision = 1 if the point is inside the bounding box
-;;               0 if the point is outside
+;; O ponto (PointX, PointY) está dentro da caixa BoxX1..BoxX2, BoxY1..BoxY2?
+;; (Não usada no momento; fica disponível para projéteis, itens etc.)
+;;
+;; Entrada: PointX, PointY, BoxX1..BoxY2
+;; Saída:   C = 1 se o ponto está dentro da caixa (limites inclusivos)
+;; Destrói: A (preserva X e Y)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc IsPointerBoxColliding
-    ;; If point.x < box.x1 → outside
-    lda ParamRectX1
-    cmp ParamXPos
-    bcc NoCollision
+.proc IsPointInBox
+    lda PointX                  ; ponto.x < x1 ?  -> fora
+    cmp BoxX1
+    bcc Done
 
-    ;; If point.x > box.x2 → outside
-    cmp ParamX2Pos
-    bcs NoCollision
+    lda BoxX2                   ; x2 < ponto.x ?  -> fora
+    cmp PointX
+    bcc Done
 
-    ;; If point.y < box.y1 → outside
-    lda ParamRectY1
-    cmp ParamYPos
-    bcc NoCollision
+    lda PointY                  ; ponto.y < y1 ?  -> fora
+    cmp BoxY1
+    bcc Done
 
-    ;; If point.y > box.y2 → outside
-    cmp ParamY2Pos
-    bcs NoCollision
-
-    ;; The point is inside the box
-    lda #1
-    sta Collision
-    rts
-
-  NoCollision:
-    lda #0
-    sta Collision
+    lda BoxY2                   ; y2 < ponto.y ?  -> fora (C = 1 = dentro)
+    cmp PointY
+Done:
     rts
 .endproc

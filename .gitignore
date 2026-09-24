@@ -1,0 +1,17 @@
+# Build outputs
+*.o
+*.nes
+
+# FCEUX debugger files
+*.cdl
+*.fdb
+
+# Arquivo de labels (gerado pelo build)
+*.lbl
+
+# Saídas do teste automático
+tests/result.txt
+tests/ending.png
+
+# Cache do Python
+__pycache__/

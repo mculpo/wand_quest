@@ -3,39 +3,22 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .segment "HEADER"
 .byte $4E, $45, $53, $1A        ; 'N', 'E', 'S', 0x1A - Identificação do formato iNES
-.byte $02                        ; Quantidade de PRG-ROM (2 * 16KB = 32KB)
-.byte $40                        ; Quantidade de CHR-ROM (64 * 8KB = 512KB)
-.byte %11110000                  ; Configuração do Mapper (UNROM 512 - mapeador homebrew)
-; Bit 7 - 1 = Ignorar controle de mirroring (mirroring definido pelo cartucho) ignora o bit 2
-;        - 0 = Mirroring controlado pelo bit 2
-; Bit 6 - 1 = PRG-ROM pode ser trocado via mapper (bancos de 16KB)
-;        - 0 = PRG-ROM fixo (sem troca de bancos)
-; Bit 5 - 1 = CHR-ROM pode ser trocado via mapper (bancos de 8KB)
-;        - 0 = CHR-ROM fixo (sem troca de bancos)
-; Bit 4 - 1 = Jogo usa UNROM 512 (sistema de troca de bancos avançado)
-;        - 0 = Jogo usa UNROM normal
-; Bit 3 - 1 = Usa CHR-RAM em vez de CHR-ROM
-;        - 0 = Usa CHR-ROM (não pode ser modificado durante a execução)
-; Bit 2 - 1 = Mirroring vertical (telas dispostas verticalmente)
-;        - 0 = Mirroring horizontal (telas dispostas horizontalmente)
-; Bit 1 - 1 = PRG-RAM com bateria (memória para saves)
-;        - 0 = Sem PRG-RAM com bateria
-; Bit 0 - 1 = Trainer presente (512 bytes extras no início da ROM)
-;        - 0 = Sem Trainer
+.byte $02                        ; Quantidade de PRG-ROM em blocos de 16KB (2 * 16KB = 32KB)
+.byte $01                        ; Quantidade de CHR-ROM em blocos de 8KB  (1 * 8KB)
+.byte %00000000                  ; Flags 6 - Mapper 0 (NROM), mirroring horizontal
+; Bit 7-4 - Nibble baixo do número do mapper (0000 = NROM)
+; Bit 3   - 1 = Four-screen VRAM (ignora o bit 0)
+; Bit 2   - 1 = Trainer de 512 bytes presente antes da PRG-ROM
+; Bit 1   - 1 = PRG-RAM com bateria em $6000-$7FFF (saves)
+; Bit 0   - Mirroring: 0 = horizontal, 1 = vertical
 
-.byte %00000000                  ; Configuração extra do Mapper e formatação
-; Bit 7-4 - 0000 = Continuação da configuração do Mapper (não afeta nada aqui)
-; Bit 3 - 1 = Jogo compatível com PlayChoice-10 (sistema arcade da Nintendo)
-;        - 0 = Jogo normal de NES
-; Bit 2 - 1 = Usa formato NES 2.0 (expansão do iNES)
-;        - 0 = Formato iNES clássico
-; Bit 1 - 1 = Reservado (sem uso definido)
-;        - 0 = Reservado (sem uso definido)
-; Bit 0 - 1 = Reservado (sem uso definido)
-;        - 0 = Reservado (sem uso definido)
+.byte %00000000                  ; Flags 7
+; Bit 7-4 - Nibble alto do número do mapper (0000)
+; Bit 3-2 - 10 = formato NES 2.0, 00 = iNES clássico
+; Bit 1   - PlayChoice-10
+; Bit 0   - VS Unisystem
 
 .byte $00                        ; PRG-RAM extra (0 = sem memória RAM adicional)
 .byte $00                        ; TV system (0 = NTSC, 1 = PAL)
 .byte $00                        ; Flags extras (sem expansão especial)
 .byte $00,$00,$00,$00,$00        ; Preenchimento para completar 16 bytes do cabeçalho
-

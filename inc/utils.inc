@@ -1,5 +1,5 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Macro to disable PPU rendering and NMI
+;; Macro para desligar a renderização da PPU e a NMI
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .macro PPU_DISABLE_NMI
     lda #0
@@ -8,49 +8,51 @@
 .endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Macro to set a 16-bit address to the PPU_ADDR register (at $2006)
+;; Macro para escrever um endereço de 16 bits em PPU_ADDR ($2006)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .macro PPU_SETADDR addr
-    bit PPU_STATUS           ; Read from PPU_STATUS to reset the address latch
-    lda #>addr               ; Fetch the hi-byte from 16-bit address
-    sta PPU_ADDR             ; Store the hi-byte into PPU_ADDR $2006
-    lda #<addr               ; Fetch the lo-byte from 16-bit address
-    sta PPU_ADDR             ; Store the lo-byte into PPU_ADDR $2006
+    bit PPU_STATUS           ; Lê PPU_STATUS para resetar o latch de endereço
+    lda #>addr               ; Byte alto do endereço
+    sta PPU_ADDR             ; Primeira escrita em $2006 = byte alto
+    lda #<addr               ; Byte baixo do endereço
+    sta PPU_ADDR             ; Segunda escrita em $2006 = byte baixo
 .endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Macro to send a value to the PPU_DATA (at $2007)
+;; Macro para enviar um valor para PPU_DATA ($2007)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .macro PPU_SETDATA val
     lda val
-    sta PPU_DATA             ; Send value to PPU register at $2007
+    sta PPU_DATA             ; Envia o valor para a PPU em $2007
 .endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Macro to push and preserv registers A, X, Y, and status flags on the Stack.
+;; Macro para salvar A, X, Y e as flags na pilha
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .macro PUSH_REGS
-    pha                      ; Push A to the stack
+    pha                      ; Empilha A
     txa
-    pha                      ; Push X to the stack
+    pha                      ; Empilha X
     tya
-    pha                      ; Push Y to the stack
-    php                      ; Push Processor Status flags to the stack
+    pha                      ; Empilha Y
+    php                      ; Empilha as flags do processador
 .endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Macro to pull and restore registers A,X,Y, and status flags from the Stack.
+;; Macro para restaurar A, X, Y e as flags da pilha (ordem inversa do PUSH_REGS)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .macro PULL_REGS
-    plp                      ; Restore the the status flags from the stack
-    pla                      ; Restore the old value of X from the stack
+    plp                      ; Restaura as flags
+    pla                      ; Restaura Y
     tay
-    pla                      ; Restore the old value of X from the stack
+    pla                      ; Restaura X
     tax
-    pla                      ; Pull A from the stack
+    pla                      ; Restaura A
 .endmacro
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Macros para salvar/restaurar só o X (destroem A)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .macro PUSH_REG_X
     txa     ; Transfere X para A
     pha     ; Salva X (agora em A) na pilha

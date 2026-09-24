@@ -1,601 +1,269 @@
 .segment "CODE"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to load all block sprites.
-;; 
-;; This routine iterates through the SpriteBlockData table and loads blocks 
-;; based on a pair of (Y, X) positions. For each valid pair found, it calls 
-;; AddNewBlock to register a new block in the system.
-;;
-;; It uses the X register to traverse the table, and stops when a zero is found.
+;; Os blocos ficam em Structure of Arrays (ver src/variables.asm):
+;; o bloco de índice N (0..MAX_BLOCKS-1) é BlockType+N, BlockX+N, etc.
+;; Nas rotinas abaixo o índice do bloco atual fica sempre em X.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc LoadAllBlock
-    ldx #0
-    LoopSprite:
-        lda SpriteBlockData, x       ; We fetch bytes from the  lookup table
-        beq :+
-        sta ParamYPos
-        inx                          ; X+
-
-        lda SpriteBlockData, x       ; We fetch bytes from the  lookup table
-        beq :+
-        sta ParamXPos
-        inx
-        jsr AddNewBlock
-        jmp LoopSprite               
-    :
-    rts
-.endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to add a new block.
+;; Adiciona um bloco no primeiro slot livre (BlockType = NULL).
+;; Os blocos de cada fase são criados pelo efeito de entrada
+;; (UpdateCellObjects em src/effects.asm), quando o quadrado deles aparece.
+;; Se todos os MAX_BLOCKS slots estiverem ocupados, não faz nada.
 ;;
-;; This routine finds the first available slot in the block array (i.e., where 
-;; the type is NULL) and fills in the block data using global parameters for 
-;; position (X, Y). If the array is full, it exits without making changes.
-;;
-;; Initializes each block with default screen, side, and velocity values.
+;; Entrada: ParamX, ParamY = posição do bloco em pixels
+;; Saída:   C = 0 se adicionou, C = 1 se o array estava cheio
+;; Destrói: A, X (preserva Y)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc AddNewBlock
-    PUSH_REGS
     ldx #0
-    LoopBlocks:
-        cpx #MAX_BLOCKS * .sizeof(Block)        ; Reached maximum number of blocks allowed in the array?
-        beq EndRoutine                          ; Then we skip and don't add a new actor
-        lda blocks+Block::Type,x
-        cmp #GameObjectType::NULL               ; If the actor type of this array position is NULL
-        beq AddNewActorToArray                  ; Then: we found an empty slot, proceed to add actor to position [x]
-    NextBlock:
-        txa
+    FindFreeSlot:
+        lda BlockType,x
+        beq AddBlock                ; GameObjectType::NULL = 0: slot livre
+        inx
+        cpx #MAX_BLOCKS
+        bne FindFreeSlot
+        rts                         ; Cheio (o cpx igual deixou C = 1)
+
+    AddBlock:
+        lda #GameObjectType::BLOCKS
+        sta BlockType,x
+        lda ParamX
+        sta BlockX,x
+        lda ParamY
+        sta BlockY,x
+        lda #BLOCK_SPEED
+        sta BlockSpeed,x
+        lda #BLOCK_PALETTE
+        sta BlockAttr,x
+        lda #Side::NONE             ; Começa parado
+        sta BlockSide,x
         clc
-        adc #.sizeof(Block)               ; Otherwise, we offset to the check the next actor in the array
-        tax                               ; X += sizeof(Block)
-        jmp LoopBlocks
-
-    AddNewActorToArray:                 ; Here we add a new actor at index [x] of the array
-        lda #GameObjectType::BLOCKS       ; Fetch parameter "actor type" from RAM
-        sta blocks+Block::Type,x
-        lda ParamXPos                     ; Fetch parameter "actor position X" from RAM
-        sta blocks+Block::XPos,x
-        lda ParamYPos                     ; Fetch parameter "actor position Y" from RAM
-        sta blocks+Block::YPos,x
-
-        lda #0
-        sta blocks+Block::Screen,x      ; Every actor starts at Screen 0 
-        sta blocks+Block::Side, x
-        sta blocks+Block::SprAttr, x
-
-        lda #3
-        sta blocks+Block::XVel,x        ; Every actor starts at Screen 0
-        sta blocks+Block::YVel,x        ; Every actor starts at Screen 0
-    EndRoutine:
-        PULL_REGS
         rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to update all active blocks.
-;; This function iterates through the block array and updates only blocks 
-;; that are not marked as NULL.
-;;
-;; Each block's position (X, Y) is updated by adding its velocity (XVel, YVel).
-;; Blocks that are marked as NULL are skipped.
-;;
-;; The loop iterates over all possible block slots, checking their type 
-;; before applying updates.
+;; Atualiza todos os blocos ativos: os que estão deslizando (BlockSide
+;; diferente de NONE) andam até BlockSpeed pixels neste frame.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc UpdateBlock
-    ldy #0
-    ldx #0 
-    LoopBlocks:
-        cpx #MAX_BLOCKS * .sizeof(Block)
-        bne :+ 
-            jmp EndRoutine
-        :
-
-        lda blocks+Block::Type,x
-        cmp #GameObjectType::NULL         
-        bne :+ 
-            jmp NextBlock
-        :
-
-        clc 
-        lda blocks+Block::XPos,x
-        sta ParamXPos
-        adc #16
-        sta ParamX2Pos
-
-        clc 
-        lda blocks+Block::YPos,x
-        sta ParamYPos
-        adc #16
-        sta ParamY2Pos
-
-        tya 
-        sta ParamCurrentNumActor
-        sta Collision
-
-        lda blocks+Block::Side,x
-        cmp #Side::NONE                   
-        bne :+ 
-            jmp NextBlock
-        :
-
-        cmp #Side::UP
-        beq MoveUp
-
-        cmp #Side::DOWN
-        beq MoveDown
-
-        cmp #Side::RIGHT
-        beq MoveRight
-
-        cmp #Side::LEFT
-        bne :+ 
-            jmp MoveLeft
-        : 
-
-        jmp NextBlock
-
-    MoveUp:
-        PUSH_REGS
-        lda blocks+Block::YVel,x
-        tay 
-        LoopMoveUp:
-            sec
-            lda ParamYPos
-            sbc #1
-            sta ParamYPos
-            clc
-            adc #16
-            sta ParamY2Pos
-
-            jsr BlockCheckCollisions
-            lda Collision
-            cmp #1
-            beq HasMoveUpCollision
-
-            lda ParamYPos
-            sta blocks+Block::YPos,x
-
-            dey
-            bne LoopMoveUp
-
-            PULL_REGS
-            jmp NextBlock
-
-        HasMoveUpCollision:
-            PULL_REGS
-            jmp HasCollision
-    MoveDown:
-        PUSH_REGS
-        lda blocks+Block::YVel, x 
-        tay 
-        LoopMoveDown:
-            clc 
-            lda ParamYPos
-            adc #1
-            sta ParamYPos
-            adc #16
-            sta ParamY2Pos
-
-            jsr BlockCheckCollisions
-            lda Collision
-            cmp #1
-            beq HasMoveDownCollision
-
-            lda ParamYPos
-            sta blocks+Block::YPos,x
-
-            dey
-            bne LoopMoveDown
-
-            PULL_REGS
-            jmp NextBlock
-
-        HasMoveDownCollision:
-            PULL_REGS
-            jmp HasCollision
-
-    MoveRight:
-        PUSH_REGS
-        lda blocks+Block::XVel,x 
-        tay 
-        LoopMoveRight:
-            clc 
-            lda ParamXPos
-            adc #1
-            sta ParamXPos
-            adc #16
-            sta ParamX2Pos
-
-            jsr BlockCheckCollisions
-            lda Collision
-            cmp #1
-            beq HasMoveRightCollision
-
-            lda ParamXPos
-            sta blocks+Block::XPos,x
-
-            dey
-            bne LoopMoveRight
-
-            PULL_REGS
-            jmp NextBlock
-
-        HasMoveRightCollision:
-            PULL_REGS
-            jmp HasCollision
-
-    MoveLeft:
-        PUSH_REGS
-        lda blocks+Block::XVel,x 
-        tay 
-        LoopMoveLeft:
-            sec 
-            lda ParamXPos
-            sbc #1
-            sta ParamXPos
-            clc 
-            adc #16
-            sta ParamX2Pos
-
-            jsr BlockCheckCollisions
-            lda Collision
-            cmp #1
-            beq HasMoveLeftCollision
-
-            lda ParamXPos
-            sta blocks+Block::XPos,x
-
-            dey
-            bne LoopMoveLeft
-
-            PULL_REGS
-            jmp NextBlock
-
-        HasMoveLeftCollision:
-            PULL_REGS
-            jmp HasCollision
-
-    HasCollision:
-        ;; verify if block stoped into the block collision #2
-        
-        
-        jsr CheckBackgroundSlotCollision
-        lda Collision
-        cmp #1
-        bne NoCollision
-
-            lda blocks+Block::SprAttr, x 
-            sta ParamAttrOut
-            lda #2
-            sta ParamAttrIn
-            jsr SetSpritePalette
-            lda ParamAttrOut
-            sta blocks+Block::SprAttr, x 
-
-        NoCollision:
-            lda #Side::NONE
-            sta blocks+Block::Side,x
-
-    NextBlock:
-        iny 
-
-        txa 
-        clc 
-        adc #.sizeof(Block)                ; Move to the next block
-        tax 
-        jmp LoopBlocks
-
-    EndRoutine:
+    ldx #0
+    Loop:
+        lda BlockType,x
+        beq Next                    ; Slot livre
+        lda BlockSide,x
+        beq Next                    ; Side::NONE: parado
+        jsr MoveBlock               ; Preserva X
+    Next:
+        inx
+        cpx #MAX_BLOCKS
+        bne Loop
         rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to render all active blocks.
-;; This function iterates through the block array and renders only blocks 
-;; that are not marked as NULL.
+;; Move o bloco X, um pixel por vez, BlockSpeed vezes na direção BlockSide.
 ;;
-;; The rendering process updates OAM memory to display the blocks as sprites.
-;; Each block's position (X, Y) is stored in temporary parameters before 
-;; calling the RenderOAMBlock subroutine.
+;; Andar de 1 em 1 pixel (em vez de somar a velocidade de uma vez) garante
+;; que o bloco nunca atravessa uma parede, outro bloco ou o player.
+;; Inimigos não param o bloco: são esmagados por ele.
+;; Quando bate em algo, para (Side::NONE) e verifica se ficou no encaixe.
 ;;
-;; The loop iterates over all possible block slots, checking their type 
-;; before rendering.
+;; Entrada: X = índice do bloco
+;; Destrói: A, Y (preserva X)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc MoveBlock
+    lda BlockSpeed,x
+    sta StepCount
+    stx IgnoreBlock                 ; O bloco não pode colidir consigo mesmo
+
+    StepLoop:
+        ldy BlockSide,x             ; Y = direção, índice nas tabelas de deslocamento
+        lda BlockX,x
+        clc
+        adc SideDeltaX,y            ; Posição X depois de andar 1 pixel
+        sta BoxX1
+        lda BlockY,x
+        clc
+        adc SideDeltaY,y            ; Posição Y depois de andar 1 pixel
+        sta BoxY1
+        jsr SetBoxSize
+
+        jsr CheckBoxVsWorld         ; Parede ou outro bloco?
+        bcs Blocked
+        jsr CheckBoxVsPlayer        ; Player?
+        bcs Blocked
+
+        lda BoxX1                   ; Livre: confirma o passo
+        sta BlockX,x
+        lda BoxY1
+        sta BlockY,x
+        jsr CrushEnemiesInBox       ; Esmaga os inimigos no caminho (preserva X)
+
+        dec StepCount
+        bne StepLoop
+        rts
+
+    Blocked:
+        lda #Side::NONE
+        sta BlockSide,x             ; Para de deslizar
+        jsr UpdateBlockPalette      ; Ajusta a cor conforme o encaixe
+        jmp CheckLevelComplete      ; Tail call: todos os encaixes ocupados?
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Ajusta a paleta do bloco X conforme o lugar onde ele parou:
+;; SLOT_PALETTE se o centro dele está sobre um TILE_SLOT, senão BLOCK_PALETTE
+;; (assim, empurrar um bloco para fora do encaixe devolve a cor original).
+;;
+;; Entrada: X = índice do bloco
+;; Destrói: A, Y (preserva X)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc UpdateBlockPalette
+    lda BlockX,x
+    clc
+    adc #8
+    sta PointX                      ; Centro do bloco (16x16)
+    lda BlockY,x
+    clc
+    adc #8
+    sta PointY
+    lda #TILE_SLOT
+    sta ParamTile
+    jsr IsPointOnTile               ; C = 1 se o centro está no encaixe
+
+    lda #BLOCK_PALETTE
+    bcc :+
+        lda #SLOT_PALETTE
+    :
+    sta ParamAttrIn
+    lda BlockAttr,x
+    sta ParamAttrOut
+    jsr SetSpritePalette            ; Troca só os bits de paleta do atributo
+    lda ParamAttrOut
+    sta BlockAttr,x
+    rts
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Desenha todos os blocos ativos no OAM usando o metasprite MetaBlock.
+;; A paleta de cada bloco (BlockAttr) entra como MetaAttr.
+;;
+;; A NES só mostra 8 sprites por linha; os que vêm depois no OAM somem.
+;; Por isso a ordem de desenho gira a cada frame (começa por um bloco
+;; diferente): se passar do limite, os sprites piscam em vez de sumir.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .proc RenderBlocks
-    lda #$02
-    sta SprPtr+1
-    lda #$00
-    sta SprPtr
-    ldx #0
+    lda #<MetaBlock                 ; Todos os blocos usam a mesma tabela
+    sta MetaPtr
+    lda #>MetaBlock
+    sta MetaPtr+1
 
-    LoopBlocks:
-        cpx #MAX_BLOCKS * .sizeof(Block)
-        beq EndRoutine
-
-        lda blocks+Block::Type,x
-        cmp #GameObjectType::NULL
-        beq NextBlock
-
-        lda blocks+Block::XPos, x 
-        sta ParamXPos
-        lda blocks+Block::YPos, x 
-        sta ParamYPos
-        lda blocks+Block::SprAttr, x 
-        sta ParamAttrOut
-
-        jsr RenderOAMBlock
-
-    NextBlock:
-        txa
-        clc
-        adc #.sizeof(Block)
-        tax
-        jmp LoopBlocks
-
-    EndRoutine:
-    rts
-.endproc
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to render a block into the OAM (Object Attribute Memory).
-;;
-;; This routine renders a 16x16 block using four 8x8 sprites (Side1 to Side4).
-;; It places each sprite in the appropriate position using ParamXPos and 
-;; ParamYPos, and updates the OAM pointer accordingly.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc RenderOAMBlock
-    ldy PrevOAMCount
-
-    Side1:
-        lda ParamYPos
-        sta (SprPtr), y
-        iny
-
-        lda #$06
-        sta (SprPtr), y
-        iny
-
-        lda ParamAttrOut
-        sta (SprPtr), y
-        iny
-
-        lda ParamXPos
-        sta (SprPtr), y
-        iny
-
-    Side2:
-        lda ParamYPos
-        sta (SprPtr), y
-        iny
-
-        lda #$07
-        sta (SprPtr), y
-        iny
-
-        lda ParamAttrOut
-        sta (SprPtr), y
-        iny
-
-        lda ParamXPos
-        clc
-        adc #8
-        sta (SprPtr), y
-        iny
-
-    Side3:
-        lda ParamYPos
-        clc
-        adc #8
-        sta (SprPtr), y
-        iny
-
-        lda #$08
-        sta (SprPtr), y
-        iny
-
-        lda #1
-        sta ParamAttrIn
-        jsr SetSpriteFlipH
-
-        lda ParamAttrOut
-        sta (SprPtr), y
-        iny
-
-        lda ParamXPos
-        sta (SprPtr), y
-        iny
-
-        Side4:
-        lda ParamYPos
-        clc
-        adc #8
-        sta (SprPtr), y
-        iny
-
-        lda #$08
-        sta (SprPtr), y
-        iny
-
-        lda #0
-        sta ParamAttrIn
-        jsr SetSpriteFlipH
-
-        lda ParamAttrOut
-        sta (SprPtr), y
-        iny
-
-        lda ParamXPos
-        clc
-        adc #8
-        sta (SprPtr), y
-        iny
-
-        tya
-        sta PrevOAMCount
-
-    rts
-.endproc
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to check block collisions.
-;;
-;; This routine checks for collisions between the player and blocks, as well 
-;; as with the background. It sets the Collision flag to 1 if a collision is 
-;; detected. The check is performed in the following order:
-;;   1. Per-block collisions
-;;   2. Background collisions
-;;   3. Collision with the player
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc BlockCheckCollisions
-    PUSH_REGS
-
-    ldx #0
-    stx Collision
-
-    jsr CheckCollisionPerBlock
-    lda Collision
-    cmp #1
-    bne :+
-        jmp FinishCollisionCheck
+    ldx RenderStart                 ; Gira o bloco inicial: 0, 1, ..., MAX_BLOCKS-1, 0...
+    inx
+    cpx #MAX_BLOCKS
+    bcc :+
+        ldx #0
     :
+    stx RenderStart                 ; X = primeiro bloco a desenhar neste frame
 
-    lda #$01
-    sta ParamTile
-    jsr CheckBackgroudCollision
-    lda Collision
-    cmp #1
-    bne :+
-        jmp FinishCollisionCheck
-    :
+    lda #MAX_BLOCKS
+    sta RenderCount
+    Loop:
+        lda BlockType,x
+        beq Next                    ; Slot livre
 
-    jsr CheckCollisionPlayer
-
-    FinishCollisionCheck:
-
-    PULL_REGS
-
-    rts
-.endproc
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Checks collision between the object and the background collision map.
-;; It tests four corners of the object's bounding box:
-;; (X, Y), (X2, Y), (X, Y2), (X2, Y2)
-;; Each corner is passed through VerifySideCollision to check if it hits
-;; a tile marked as solid (value #$01) in the bgcollision map.
-;;
-;; Coordinates are passed via:
-;;   - ParamXPos / ParamX2Pos (horizontal bounds)
-;;   - ParamYPos / ParamY2Pos (vertical bounds)
-;;
-;; If any corner has collision, it sets Collision = 1 and exits early.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc CheckBackgroundSlotCollision
-    PUSH_REGS
-    lda #0
-    sta Collision
-
-    clc
-    lda ParamXPos
-    adc #8
-    sta ParamRectX1
-    clc
-    lda ParamYPos
-    adc #8
-    sta ParamRectX2
-
-    nop
-        nop
-        nop
-        nop
-
-    lda #$02
-    sta ParamTile
-    jsr VerifySideCollision
-    PULL_REGS
-    rts 
+        lda BlockX,x
+        sta MetaX
+        lda BlockY,x
+        sta MetaY
+        lda BlockAttr,x
+        sta MetaAttr
+        jsr DrawMetasprite          ; Preserva X
+    Next:
+        inx                         ; Próximo bloco, dando a volta no fim do array
+        cpx #MAX_BLOCKS
+        bcc :+
+            ldx #0
+        :
+        dec RenderCount
+        bne Loop
+        rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to check collision between the player and the blocks.
+;; A hitbox Box bate em uma parede ou em algum bloco?
+;; (Usada tanto pelo player quanto pelos blocos.)
 ;;
-;; This routine sets up a bounding box around the player and calls the 
-;; IsBoundingBoxColliding function to test collision. If a collision occurs, 
-;; the Collision flag will be set.
+;; Entrada: BoxX1..BoxY2, IgnoreBlock
+;; Saída:   C = 1 se colidiu
+;; Destrói: A, Y, Temp, PointX, PointY, ParamTile, RectX1..RectY2 (preserva X)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc CheckCollisionPlayer
-    tya 
-    pha 
-
-    sec 
-    lda Players+Player::x_pos
-    sta ParamRectX1
-    adc #16
-    sta ParamRectX2
-    lda Players+Player::y_pos
-    sta ParamRectY1
-    adc #16
-    sta ParamRectY2
-
-    jsr IsBoundingBoxColliding
-
-    pla 
-    tay 
+.proc CheckBoxVsWorld
+    lda #TILE_SOLID
+    sta ParamTile
+    jsr CheckBoxOnTile              ; Parede?
+    bcs Done
+    jsr CheckBoxVsBlocks            ; Outro bloco?
+Done:
     rts
 .endproc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subroutine to loop all enemy actors checking for collision with missile
-;; Params = ParamXPos, ParamYPos (are the X and Y position of the missile)
+;; A hitbox Box bate em algum bloco ativo (exceto o bloco IgnoreBlock)?
+;;
+;; Entrada: BoxX1..BoxY2, IgnoreBlock (NO_BLOCK para testar todos)
+;; Saída:   C = 1 se colidiu, e então Y = índice do bloco atingido
+;; Destrói: A, Y, RectX1..RectY2 (preserva X)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-.proc CheckCollisionPerBlock
-    tya 
-    pha
+.proc CheckBoxVsBlocks
     ldy #0
-    CollisionLoop:
-        cpx #MAX_BLOCKS * .sizeof(Block)
-        beq FinishCollisionCheck
+    Loop:
+        cpy IgnoreBlock
+        beq Next                    ; Não testa contra si mesmo
+        lda BlockType,y
+        beq Next                    ; Slot livre
 
-        tya 
-        cmp ParamCurrentNumActor
-        beq NextEnemy
+        lda BlockX,y                ; Rect = hitbox do bloco Y
+        sta RectX1
+        clc
+        adc #HITBOX_SIZE
+        sta RectX2
+        lda BlockY,y
+        sta RectY1
+        clc
+        adc #HITBOX_SIZE
+        sta RectY2
 
-        lda blocks+Block::Type,x
-        cmp #GameObjectType::NULL
-        beq NextEnemy
-
-        lda blocks+Block::XPos,x
-        sta ParamRectX1
-        adc #16
-        sta ParamRectX2
-
-        lda blocks+Block::YPos,x
-        sta ParamRectY1
-        adc #16
-        sta ParamRectY2
-
-
-        jsr IsBoundingBoxColliding
-
-        lda Collision
-        beq NextEnemy
-        jmp FinishCollisionCheck
-
-    NextEnemy:
-        clc 
-        iny 
-        txa 
-        clc 
-        adc #.sizeof(Block)
-        tax 
-        jmp CollisionLoop
-
-    FinishCollisionCheck:
-    pla 
-    tya 
+        jsr IsBoxColliding          ; Preserva Y
+        bcs Done                    ; Colidiu: devolve C = 1 e Y = índice
+    Next:
+        iny
+        cpy #MAX_BLOCKS
+        bne Loop
+        clc                         ; Nenhum bloco (o cpy igual tinha deixado C = 1)
+Done:
     rts
+.endproc
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; A hitbox Box bate no player?
+;;
+;; Entrada: BoxX1..BoxY2
+;; Saída:   C = 1 se colidiu
+;; Destrói: A, RectX1..RectY2 (preserva X e Y)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.proc CheckBoxVsPlayer
+    lda PlayerX                     ; Rect = hitbox do player
+    sta RectX1
+    clc
+    adc #HITBOX_SIZE
+    sta RectX2
+    lda PlayerY
+    sta RectY1
+    clc
+    adc #HITBOX_SIZE
+    sta RectY2
+    jmp IsBoxColliding              ; Tail call: devolve o carry direto
 .endproc
