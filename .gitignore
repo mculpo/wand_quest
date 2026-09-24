@@ -15,3 +15,7 @@ tests/ending.png
 
 # Cache do Python
 __pycache__/
+
+# Protótipo: saídas dos testes
+prototipo/tests/*.png
+prototipo/tests/*.txt
